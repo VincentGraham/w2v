@@ -3,7 +3,6 @@
 # import nltk
 # nltk.data.path = ['/Users/vincent/Desktop/mounted/nltk_data']
 
-import cython
 import gensim
 import logging
 import multiprocessing as mp
@@ -16,7 +15,6 @@ import timeit
 import threading
 import queue
 
-from pympler import summary, muppy
 from multiprocessing import Process, Queue, Pool
 from rearrange import get_sentences, main
 from time import time
@@ -64,7 +62,6 @@ class MySentences(object):
         self.dirname = dirname
 
     def __iter__(self):
-        processes = []
 
         for root, dirs, files in os.walk(self.dirname):
             paths = []
@@ -74,6 +71,7 @@ class MySentences(object):
                       filename if filename != '.DS_Store' else filename)
                 for filename in files
             ]
+        processes = []
         """MultiThreaded"""
         # for _ in range(24):
         #     pr = MyThread(q, output)
@@ -86,31 +84,11 @@ class MySentences(object):
             p.start()
 
         while not output.empty() or not q.empty():
-
             out = output.get()
             yield out
-        #     print('Done at {}'.format(root))
-        #     print(timeit.default_timer() - start_time)
-        # print(timeit.default_timer() - start_time)
 
-    # def __iter__(self):
-    #     start_time = timeit.default_timer()
-    #     for root, dirs, files in os.walk(self.dirname):
-    #         paths = []
-    #         for filename in files:
-    #             file_path = root + '/' + filename
-    #             if filename == '.DS_Store':
-    #                 continue
-    #             process = Process(target=get_sentences, args=[file_path])
-    #             process.start()
-    #             process.join()
-    #             x = output.get()
-    #             print(x)
-    #             yield x
-
-    #         print('Done at {}'.format(root))
-    #         print(timeit.default_timer() - start_time)
-    #     print(timeit.default_timer() - start_time)
+        for p in processes:
+            p.join()
 
 
 if __name__ == '__main__':
