@@ -680,6 +680,8 @@ model = make_model(
     hidden_size=256,
     num_layers=1,
     dropout=0.1)
+model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+# model.to(DEVICE)
 
 dev_perplexities = train(model, print_every=10, num_epochs=10)
 
