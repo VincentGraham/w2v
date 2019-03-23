@@ -10,6 +10,9 @@ from rearrange import check_case, tokenize
 
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device('cuda:0')  # or set to 'cpu'
+DEVICE1 = torch.device('cuda:1')
+DEVICE2 = torch.device('cuda:2')
+DEVICE3 = torch.device('cuda:3')
 
 vocab = load_word2vec_vocab()
 pret = load_word2vec_model()
@@ -614,7 +617,7 @@ print_data_info(train_data, valid_data, SRC, TRG)
 
 train_iter = data.BucketIterator(
     train_data,
-    batch_size=16,
+    batch_size=4,
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
