@@ -400,7 +400,7 @@ def greedy_decode(model,
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-            prob = model.generator(pre_output[:, -1])
+            prob = model.module.generator(pre_output[:, -1])
 
         _, next_word = torch.max(prob, dim=1)
         next_word = next_word.data.item()
@@ -475,43 +475,6 @@ def print_examples(example_iter,
         count += 1
         if count == n:
             break
-
-
-def train_copy_task():
-    """Train the simple copy task."""
-    num_words = 11
-    criterion = nn.NLLLoss(reduction="sum", ignore_index=0)
-    model = make_model(num_words, num_words, emb_size=500, hidden_size=64)
-    optim = torch.optim.Adam(model.parameters(), lr=0.0003)
-    eval_data = list(
-        data_gen(num_words=num_words, batch_size=1, num_batches=100))
-
-    dev_perplexities = []
-
-    if USE_CUDA:
-        model.cuda()
-
-    for epoch in range(10):
-
-        print("Epoch %d" % epoch)
-
-        # train
-        model.train()
-        data = data_gen(num_words=num_words, batch_size=32, num_batches=100)
-        run_epoch(data, model,
-                  SimpleLossCompute(model.generator, criterion, optim))
-
-        # evaluate
-        model.eval()
-        with torch.no_grad():
-            perplexity = run_epoch(
-                eval_data, model,
-                SimpleLossCompute(model.generator, criterion, None))
-            print("Evaluation perplexity: %f" % perplexity)
-            dev_perplexities.append(perplexity)
-            print_examples(eval_data, model, n=2, max_len=9)
-
-    return dev_perplexities
 
 
 def plot_perplexity(perplexities):
@@ -653,7 +616,7 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         train_perplexity = run_epoch(
             (rebatch(PAD_INDEX, b) for b in train_iter),
             model,
-            SimpleLossCompute(model.generator, criterion, optim),
+            SimpleLossCompute(model.module.generator, criterion, optim),
             print_every=print_every)
 
         # model.eval()
@@ -680,12 +643,13 @@ model = make_model(
     hidden_size=256,
     num_layers=1,
     dropout=0.1)
+
 model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
 # model.to(DEVICE)
 
 dev_perplexities = train(model, print_every=10, num_epochs=10)
 
-torch.save(model.state_dict(), '/mounted/data/torch/model')
+torch.save(model.module.state_dict(), '/mounted/data/torch/model')
 
 
 def load_model():
