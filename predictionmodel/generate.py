@@ -84,6 +84,7 @@ class Encoder(nn.Module):
         x should have dimensions [batch, time, dim].
         """
         packed = pack_padded_sequence(x, lengths, batch_first=True)
+        self.rnn.flatten_parameters()
         output, final = self.rnn(packed)
         output, _ = pad_packed_sequence(output, batch_first=True)
 
@@ -142,6 +143,7 @@ class Decoder(nn.Module):
 
         # update rnn hidden state
         rnn_input = torch.cat([prev_embed, context], dim=2)
+        self.rnn.flatten_parameters()
         output, hidden = self.rnn(rnn_input, hidden)
 
         pre_output = torch.cat([prev_embed, output, context], dim=2)
@@ -641,13 +643,13 @@ model = make_model(
     len(TRG.vocab),
     emb_size=500,
     hidden_size=256,
-    num_layers=1,
+    num_layers=2,
     dropout=0.1)
 
 model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
 # model.to(DEVICE)
 
-dev_perplexities = train(model, print_every=10, num_epochs=10)
+dev_perplexities = train(model, print_every=100, num_epochs=100)
 
 torch.save(model.module.state_dict(), '/mounted/data/torch/model')
 
