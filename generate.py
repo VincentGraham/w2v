@@ -328,22 +328,34 @@ def run_epoch(data_iter, model, loss_compute, print_every=50):
     return math.exp(total_loss / float(total_tokens))
 
 
-def data_gen(num_words=11,
-             batch_size=16,
-             num_batches=100,
+def reverse_lookup_words(x, length, token, vocab=None):
+
+    z = [0]
+    if vocab is not None:
+        z += [vocab.itos.index(i) for i in x.split(' ')]
+    while len(z) < length:
+        z += ([token])
+    return np.asarray([z])
+
+
+def data_gen(sentence,
+             num_words=11,
+             batch_size=1,
+             num_batches=1,
              length=10,
-             pad_index=0,
+             pad_index=1,
              sos_index=1):
     """Generate random data for a src-tgt copy task."""
+
     for i in range(num_batches):
         data = torch.from_numpy(
-            np.random.randint(1, num_words, size=(batch_size, length)))
+            reverse_lookup_words(sentence, length, pad_index, SRC.vocab))
         data[:, 0] = sos_index
         data = data.cuda() if USE_CUDA else data
         src = data[:, 1:]
         trg = data
-        src_lengths = [length - 1] * batch_size
-        trg_lengths = [length] * batch_size
+        src_lengths = [length - 1]
+        trg_lengths = [length]
         yield Batch((src, src_lengths), (trg, trg_lengths),
                     pad_index=pad_index)
 
@@ -570,8 +582,6 @@ if True:
 
     PAD_INDEX = TRG.vocab.stoi[PAD_TOKEN]
 
-# TODO: add custom tokens using the rearrange .py file
-
 
 def print_data_info(train_data, valid_data, src_field, trg_field):
     """ This prints some useful stuff about our data sets. """
@@ -608,7 +618,7 @@ def print_data_info(train_data, valid_data, src_field, trg_field):
     print("Number of English words (types):", len(trg_field.vocab), "\n")
 
 
-print_data_info(train_data, valid_data, SRC, TRG)
+# print_data_info(train_data, valid_data, SRC, TRG)
 
 train_iter = data.BucketIterator(
     train_data,
@@ -683,32 +693,33 @@ def train_model():
     print("saved model")
 
 
+def rebatch_pred(pad_idx, batch):
+    return Batch(batch.src, batch.trg, pad_idx)
+
+
 def load_model():
     model = make_model(
         len(SRC.vocab),
         len(TRG.vocab),
         emb_size=500,
-        hidden_size=1500,
-        num_layers=3,
-        dropout=0.2)
+        hidden_size=256,
+        num_layers=1,
+        dropout=0.1)
     model.load_state_dict(torch.load('data/torch/model'))
     model.eval()
     return model
 
 
 model = load_model()
-
-hypotheses = []
-alphas = []  # save the last attention scores
-for batch in valid_iter:
-    batch = rebatch(PAD_INDEX, batch)
-    pred, attention = greedy_decode(
-        model,
-        batch.src,
-        batch.src_mask,
-        batch.src_lengths,
-        max_len=25,
-        sos_index=TRG.vocab.stoi[SOS_TOKEN],
-        eos_index=TRG.vocab.stoi[EOS_TOKEN])
-    hypotheses.append(pred)
-    alphas.append(attention)
+while True:
+    i = input("Learn more about: ")
+    for c in i.split():
+        if c not in SRC.vocab.itos:
+            continue
+        else:
+            print_examples(
+                list(data_gen(i)),
+                model,
+                n=3,
+                src_vocab=SRC.vocab,
+                trg_vocab=TRG.vocab)

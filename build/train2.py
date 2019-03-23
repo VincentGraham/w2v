@@ -128,15 +128,15 @@ if __name__ == '__main__':
 
     model = gensim.models.Word2Vec(
         sentences,
-        size=500,
+        size=300,
         window=15,
         min_count=4,
-        workers=mp.cpu_count() / 3,
+        workers=mp.cpu_count() / 2,
         alpha=a,
         min_alpha=1e-7,
         iter=epochs,
         sg=1,
-        batch_words=7500)
+        batch_words=4500)
     model.save("/mounted/word2vec.model")
     model.wv.save_word2vec_format("/mounted/word2vec.bin", binary=True)
     with open("/mounted/vocab.pkl", 'wb') as file:
