@@ -10,9 +10,11 @@ from rearrange import check_case, tokenize
 
 USE_CUDA = 0
 DEVICE = torch.device('cpu')  # or set to 'cpu'
+FAST = False
 
-vocab = load_word2vec_vocab()
-pret = load_word2vec_model()
+if not FAST:
+    vocab = load_word2vec_vocab()
+    pret = load_word2vec_model()
 
 
 class EncoderDecoder(nn.Module):
@@ -484,6 +486,7 @@ def print_examples(example_iter,
         count += 1
         if count == n:
             break
+        return " ".join(lookup_words(result, vocab=trg_vocab))
 
 
 def train_copy_task():
@@ -538,7 +541,10 @@ if True:
     import spacy
 
     def token(text):
-        return [x for x in tokenize(text)[0].split()]
+        return [
+            x for x in tokenize(text)[0].replace('(', "").replace(")", "").
+            split()
+        ]
 
     UNK_TOKEN = "<u>"
     PAD_TOKEN = "<p>"
@@ -710,16 +716,83 @@ def load_model():
     return model
 
 
-model = load_model()
-while True:
-    i = input("Learn more about: ")
+if not FAST:
+    model = load_model()
+
+# while True:
+#     works = True
+#     i = input("Learn more about: ")
+#     for c in i.split():
+#         if c not in SRC.vocab.itos:
+#             works = False
+#     if i == "HELP":
+#         print(SRC.vocab.itos)
+#     if works:
+#         print_examples(
+#             list(data_gen(i)),
+#             model,
+#             n=3,
+#             src_vocab=SRC.vocab,
+#             trg_vocab=TRG.vocab)
+
+from telegram.ext import Updater, InlineQueryHandler, CommandHandler
+from telegram import constants
+import requests
+import re
+import time
+
+
+def send_message(bot, chat_id, text: str, **kwargs):
+    if len(text) <= 500:
+        return bot.send_message(chat_id, text, **kwargs)
+
+    parts = []
+    while len(text) > 0:
+        if len(text) > 500:
+            part = text[:500]
+            first_lnbr = part.rfind('\n')
+            if first_lnbr != -1:
+                parts.append(part[:first_lnbr])
+                text = text[first_lnbr:]
+            else:
+                parts.append(part)
+                text = text[500:]
+        else:
+            parts.append(text)
+            break
+
+    msg = None
+    for part in parts:
+        msg = bot.send_message(chat_id, part, **kwargs)
+        time.sleep(.25)
+    return msg
+
+
+def explain(bot, i):
+    id = i.message.chat.id
+    i = i.message.text[2:].strip()
+    works = True
+    if i == "HELP":
+        send_message(bot, chat_id=id, text=str(SRC.vocab.itos))
+        works = False
     for c in i.split():
         if c not in SRC.vocab.itos:
-            continue
-        else:
-            print_examples(
+            works = False
+    if works:
+        send_message(
+            bot,
+            chat_id=id,
+            text=i + ': ' + print_examples(
                 list(data_gen(i)),
                 model,
                 n=3,
                 src_vocab=SRC.vocab,
-                trg_vocab=TRG.vocab)
+                trg_vocab=TRG.vocab))
+
+
+print('loaded all that stuff')
+updater = Updater('675465827:AAEeL4zI3M5eH-heceYhPpIZqK-rFlup7N4')
+dp = updater.dispatcher
+dp.add_handler(CommandHandler('l', explain))
+updater.start_polling()
+updater.idle()

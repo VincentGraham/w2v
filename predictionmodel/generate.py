@@ -525,7 +525,10 @@ if True:
     import json
 
     def token(text):
-        return [x for x in tokenize(text)[0].split()]
+        return [
+            x for x in tokenize(text)[0].replace('(', "").replace(")", "").
+            split()
+        ]
 
     UNK_TOKEN = "<u>"
     PAD_TOKEN = "<p>"
@@ -552,7 +555,7 @@ if True:
         init_token=SOS_TOKEN,
         eos_token=EOS_TOKEN)
 
-    MAX_LEN = 45  # NOTE: we filter out a lot of sentences for speed
+    MAX_LEN = 100  # NOTE: we filter out a lot of sentences for speed
 
     data_fields = [('sentence', SRC), ('article', TRG)]
 
@@ -562,7 +565,7 @@ if True:
         validation='test.csv',
         format="csv",
         fields=data_fields)
-    MIN_FREQ = 2  # NOTE: we limit the vocabulary to frequent words for speed
+    MIN_FREQ = 1  # NOTE: we limit the vocabulary to frequent words for speed
     VOCAB = vocab.Vectors('model.txt', cache='/mounted/data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
     TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
@@ -586,12 +589,12 @@ def print_data_info(train_data, valid_data, src_field, trg_field):
     print("Most common words (src):")
     print(
         "\n".join(
-            ["%10s %10d" % x for x in src_field.vocab.freqs.most_common(10)]),
+            ["%10s %10d" % x for x in src_field.vocab.freqs.most_common(15)]),
         "\n")
     print("Most common words (trg):")
     print(
         "\n".join(
-            ["%10s %10d" % x for x in trg_field.vocab.freqs.most_common(10)]),
+            ["%10s %10d" % x for x in trg_field.vocab.freqs.most_common(15)]),
         "\n")
 
     print("First 10 words (src):")
@@ -611,7 +614,7 @@ print_data_info(train_data, valid_data, SRC, TRG)
 
 train_iter = data.BucketIterator(
     train_data,
-    batch_size=64,
+    batch_size=16,
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
