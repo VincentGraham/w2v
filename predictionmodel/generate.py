@@ -523,7 +523,7 @@ if True:
         init_token=SOS_TOKEN,
         eos_token=EOS_TOKEN)
 
-    MAX_LEN = 100  # NOTE: we filter out a lot of sentences for speed
+    MAX_LEN = 60  # NOTE: we filter out a lot of sentences for speed
 
     data_fields = [('sentence', SRC), ('article', TRG)]
 
@@ -533,7 +533,7 @@ if True:
         validation='test.csv',
         format="csv",
         fields=data_fields)
-    MIN_FREQ = 1  # NOTE: we limit the vocabulary to frequent words for speed
+    MIN_FREQ = 2  # NOTE: we limit the vocabulary to frequent words for speed
     VOCAB = vocab.Vectors('model.txt', cache='/mounted/data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
     TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
@@ -582,17 +582,10 @@ print_data_info(train_data, valid_data, SRC, TRG)
 
 train_iter = data.BucketIterator(
     train_data,
-    batch_size=4,
+    batch_size=2,
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
-    repeat=False,
-    device=DEVICE)
-valid_iter = data.Iterator(
-    valid_data,
-    batch_size=1,
-    train=False,
-    sort=False,
     repeat=False,
     device=DEVICE)
 
