@@ -27,15 +27,6 @@ assert gensim.models.doc2vec.FAST_VERSION > -1
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-compiled_expression = re.compile('<.*?>')
-
-
-def cleanhtml(raw_html):
-    global compiled_expression
-    cleantext = re.sub(compiled_expression, ' ', raw_html)
-    return cleantext
-
-
 q = Queue()
 output = Queue()
 THREADS = 24

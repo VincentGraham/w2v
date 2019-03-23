@@ -8,8 +8,8 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import numpy as np
 from rearrange import check_case, tokenize
 
-USE_CUDA = 0
-DEVICE = torch.device('cpu')  # or set to 'cpu'
+USE_CUDA = torch.cuda.is_available()
+DEVICE = torch.device('cuda:0')  # or set to 'cpu'
 
 vocab = load_word2vec_vocab()
 pret = load_word2vec_model()
@@ -523,7 +523,6 @@ from torchtext import data, datasets, vocab
 
 if True:
     import json
-    import spacy
 
     def token(text):
         return [x for x in tokenize(text)[0].split()]
@@ -553,18 +552,18 @@ if True:
         init_token=SOS_TOKEN,
         eos_token=EOS_TOKEN)
 
-    MAX_LEN = 30  # NOTE: we filter out a lot of sentences for speed
+    MAX_LEN = 45  # NOTE: we filter out a lot of sentences for speed
 
     data_fields = [('sentence', SRC), ('article', TRG)]
 
     train_data, valid_data = data.TabularDataset.splits(
-        path="data",
+        path="/mounted/data",
         train='test.csv',
         validation='test.csv',
         format="csv",
         fields=data_fields)
-    MIN_FREQ = 5  # NOTE: we limit the vocabulary to frequent words for speed
-    VOCAB = vocab.Vectors('model.txt', cache='data')
+    MIN_FREQ = 2  # NOTE: we limit the vocabulary to frequent words for speed
+    VOCAB = vocab.Vectors('model.txt', cache='/mounted/data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
     TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
 
@@ -668,19 +667,17 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
     return dev_perplexities
 
 
-def train_model():
-    model = make_model(
-        len(SRC.vocab),
-        len(TRG.vocab),
-        emb_size=500,
-        hidden_size=256,
-        num_layers=1,
-        dropout=0.1)
+model = make_model(
+    len(SRC.vocab),
+    len(TRG.vocab),
+    emb_size=500,
+    hidden_size=256,
+    num_layers=1,
+    dropout=0.1)
 
-    dev_perplexities = train(model, print_every=10, num_epochs=10)
+dev_perplexities = train(model, print_every=10, num_epochs=10)
 
-    torch.save(model.state_dict(), 'data/torch/model')
-    print("saved model")
+torch.save(model.state_dict(), '/mounted/data/torch/model')
 
 
 def load_model():
@@ -691,24 +688,6 @@ def load_model():
         hidden_size=1500,
         num_layers=3,
         dropout=0.2)
-    model.load_state_dict(torch.load('data/torch/model'))
+    model.load_state_dict(torch.load('/mounted/data/torch/model'))
     model.eval()
     return model
-
-
-model = load_model()
-
-hypotheses = []
-alphas = []  # save the last attention scores
-for batch in valid_iter:
-    batch = rebatch(PAD_INDEX, batch)
-    pred, attention = greedy_decode(
-        model,
-        batch.src,
-        batch.src_mask,
-        batch.src_lengths,
-        max_len=25,
-        sos_index=TRG.vocab.stoi[SOS_TOKEN],
-        eos_index=TRG.vocab.stoi[EOS_TOKEN])
-    hypotheses.append(pred)
-    alphas.append(attention)
