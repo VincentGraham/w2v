@@ -658,7 +658,7 @@ def train_model():
 
     dev_perplexities = train(model, print_every=100, num_epochs=100)
 
-    torch.save(model.state_dict(), 'mounted/data/torch/model')
+    torch.save(model.state_dict(), '/mounted/data/torch/model')
     print("saved model")
 
 
@@ -674,7 +674,7 @@ def load_model():
         hidden_size=256,
         num_layers=1,
         dropout=0.1)
-    model.load_state_dict(torch.load('mounted/data/torch/model'))
+    model.load_state_dict(torch.load('/mounted/data/torch/model'))
     model.eval()
     return model
 

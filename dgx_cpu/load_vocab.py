@@ -9,10 +9,10 @@ from rearrange import cleanhtml, tokenize, check_case
 def save_word2vec(model=None):
     if model is None:
         word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(
-            'mounted/data/lowercase_model_pos.txt')
+            '/mounted/data/lowercase_model_pos.txt')
         weights_matrix = torch.FloatTensor(word2vec_model.vectors)
         word2vec_model.save_word2vec_format(
-            'mounted/data/word2vec.bin', binary=True)
+            '/mounted/data/word2vec.bin', binary=True)
         print("loaded word2vec layer")
 
     else:
@@ -25,7 +25,7 @@ def save_word2vec(model=None):
 
 
 def load_word2vec_vocab():
-    with open("mounted/data/vocab.pkl", "rb") as file:
+    with open("/mounted/data/vocab.pkl", "rb") as file:
         vocab_list = pickle.load(file)
     file.close()
     return vocab_list
@@ -33,14 +33,14 @@ def load_word2vec_vocab():
 
 def load_word2vec_model():
     word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(
-        'mounted/data/model.bin', binary=True)
+        '/mounted/data/model.bin', binary=True)
     print("Converting Model to weight vectors...")
     return word2vec_model
 
 
 def alt_save():
     w = load_word2vec_model()
-    w.save_word2vec_format('mounted/data/model.txt', binary=False)
+    w.save_word2vec_format('/mounted/data/model.txt', binary=False)
 
 
 # alt_save()
