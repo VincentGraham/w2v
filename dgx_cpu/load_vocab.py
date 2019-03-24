@@ -85,7 +85,7 @@ def get_sentences_csv():
 
 
 def make():
-    with open('mounted/data/first.csv', 'w+') as csvfile:
+    with open('/mounted/data/first.csv', 'w+') as csvfile:
         fieldnames = ['sentence', 'article']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -95,10 +95,10 @@ def make():
                 continue
             if item[0] != "" and item[1] != "":
                 writer.writerow({'sentence': item[0], 'article': item[1]})
-    fi = open('mounted/data/first.csv', 'rb')
+    fi = open('/mounted/data/first.csv', 'rb')
     data = fi.read()
     fi.close()
-    fo = open('mounted/data/test.csv', 'wb')
+    fo = open('/mounted/data/test.csv', 'wb')
     fo.write(data.replace(b'\x00', ''.encode(encoding='UTF-8')))
     fo.close()
 
