@@ -211,7 +211,9 @@ class Decoder(nn.Module):
             output, hidden, pre_output = self.forward_step(
                 prev_embed, encoder_hidden, src_mask, proj_key, hidden)
             decoder_states.append(output)
+            del output
             pre_output_vectors.append(pre_output)
+            del pre_output
 
         decoder_states = torch.cat(decoder_states, dim=1)
         pre_output_vectors = torch.cat(pre_output_vectors, dim=1)
@@ -342,15 +344,16 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
     total_loss = 0
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
-        for obj in gc.get_objects():
-            if (not os.path.isdir(str(obj) and not isinstance(obj, io.IOBase))
-                    and torch.is_tensor(obj)) or (os.path.isdir(
-                        str(obj.data) and not isinstance(obj, io.IOBase)
-                        and hasattr(obj, 'data')
-                        and torch.is_tensor(obj.data))):
-                # print(type(obj), obj.size())
-                del obj
-                gc.collect()
+        gc.collect()
+        # for obj in gc.get_objects():
+        #     if (not os.path.isdir(str(obj) and not isinstance(obj, io.IOBase))
+        #             and torch.is_tensor(obj)) or (os.path.isdir(
+        #                 str(obj.data) and not isinstance(obj, io.IOBase)
+        #                 and hasattr(obj, 'data')
+        #                 and torch.is_tensor(obj.data))):
+        #         # print(type(obj), obj.size())
+        #         del obj
+        #         gc.collect()
         batch = rebatch(PAD_INDEX, batch)
         out, _, pre_output = model.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
