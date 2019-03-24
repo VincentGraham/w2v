@@ -655,7 +655,7 @@ class FullModel(nn.Module):
         return torch.unsqueeze(loss, 0), outputs
 
 
-model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3])
+model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3]).cuda()
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
 
