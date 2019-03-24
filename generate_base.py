@@ -328,14 +328,13 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
     total_loss = 0
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
-
-        # for obj in gc.get_objects():
-        #     if (not isinstance(obj, io.IOBase) and torch.is_tensor(obj)) or (
-        #             not isinstance(obj, io.IOBase) and hasattr(obj, 'data')
-        #             and torch.is_tensor(obj.data)):
-        #         print(type(obj), obj.size())
-        #         del obj
-        #         gc.collect()
+        for obj in gc.get_objects():
+            if (not isinstance(obj, io.IOBase) and torch.is_tensor(obj)) or (
+                    not isinstance(obj, io.IOBase) and hasattr(obj, 'data')
+                    and torch.is_tensor(obj.data)):
+                # print(type(obj), obj.size())
+                del obj
+                gc.collect()
         batch = rebatch(PAD_INDEX, batch)
         out, _, pre_output = model.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
@@ -359,8 +358,7 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
                   (i, loss / batch.nseqs, print_tokens / elapsed))
             start = time.time()
             print_tokens = 0
-
-    return math.exp(total_loss / float(total_tokens))
+    return math.exp(total_loss * norm / float(total_tokens))
 
 
 def reverse_lookup_words(x, length, token, vocab=None):
