@@ -258,7 +258,10 @@ def make_model(src_vocab,
     "Helper: Construct a model from hyperparameters."
 
     attention = BahdanauAttention(hidden_size)
-
+    embedding1 = nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors))
+    embedding2 = nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors))
+    embedding1.weight.requires_grad = False
+    embedding2.weight.requires_grad = False
     model = EncoderDecoder(
         Encoder(emb_size, hidden_size, num_layers=num_layers, dropout=dropout),
         Decoder(
@@ -266,9 +269,7 @@ def make_model(src_vocab,
             hidden_size,
             attention,
             num_layers=num_layers,
-            dropout=dropout),
-        nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors)),
-        nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors)),
+            dropout=dropout), embedding1, embedding2,
         Generator(hidden_size, tgt_vocab))
 
     return model

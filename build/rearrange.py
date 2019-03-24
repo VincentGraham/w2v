@@ -174,7 +174,7 @@ def check_case_fast(sentence):
 def get_sentences_fast(file_path):
     start_time = timeit.default_timer()
     # sentences = np.array(dtype=np.array)
-    sentences = []
+    sentences = np.array([], dtype=str)
     fi = np.loadtxt(file_path, delimiter='\n', dtype=str)
     for line in fi:
         line = cleanhtml_fast(line)
@@ -201,8 +201,8 @@ def get_sentences_fast(file_path):
                     or word == '<u>' or '-' in word)
             ])
             result = check_case_fast(list_of_words)
-            # sentences += list(result)
-    return [[1, 2, 3]]
+            np.append(sentences, result)
+    return sentences
 
 
 def get_sentences(file_path):
@@ -260,7 +260,7 @@ def main(tasks, outqueue):
 #             continue
 #         paths.append(file_path)
 #     pool = Pool(12)
-#     y = pool.map(get_sentences_fast, paths)
+#     y = pool.map(get_sentences, paths)
 
 #     print('Done at {}'.format(root), end=" ")
 #     print(timeit.default_timer() - start_time)  # Time to beat 6.10
