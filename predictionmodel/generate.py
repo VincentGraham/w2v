@@ -302,7 +302,7 @@ class Batch:
             self.trg_mask = (self.trg_y != pad_index)
             self.ntokens = (self.trg_y != pad_index).data.sum().item()
 
-        if USE_CUDA:
+        if False:
             self.src = self.src.cuda()
             self.src_mask = self.src_mask.cuda()
 
@@ -312,9 +312,29 @@ class Batch:
                 self.trg_mask = self.trg_mask.cuda()
 
 
+class SimpleLossCompute:
+    """A simple loss compute and train function."""
+
+    def __init__(self, generator, loss, opt=None):
+        self.loss = loss
+        self.generator = generator
+        self.opt = opt
+
+    def __call__(self, x, y, norm):
+        x = self.generator(x)
+        loss = loss / norm
+
+        if self.opt is not None:
+            loss.backward()
+            self.opt.step()
+            self.opt.zero_grad()
+
+        return loss.data.item() * norm
+
+
 def run_epoch(data_iter, model, optim, print_every=50):
     """Standard Training and Logging Function"""
-
+    # TODO add on the fly tensorizing of data instead of initial
     start = time.time()
     total_tokens = 0
     total_loss = 0
@@ -339,44 +359,26 @@ def run_epoch(data_iter, model, optim, print_every=50):
     return math.exp(total_loss / float(total_tokens))
 
 
-def data_gen(num_words=11,
-             batch_size=16,
-             num_batches=100,
+def data_gen(sentence,
+             num_words=11,
+             batch_size=1,
+             num_batches=1,
              length=10,
-             pad_index=0,
+             pad_index=1,
              sos_index=1):
     """Generate random data for a src-tgt copy task."""
+
     for i in range(num_batches):
         data = torch.from_numpy(
-            np.random.randint(1, num_words, size=(batch_size, length)))
+            reverse_lookup_words(sentence, length, pad_index, SRC.vocab))
         data[:, 0] = sos_index
-        # data = data.cuda() if USE_CUDA else data
+        data = data.cuda() if USE_CUDA else data
         src = data[:, 1:]
         trg = data
-        src_lengths = [length - 1] * batch_size
-        trg_lengths = [length] * batch_size
+        src_lengths = [length - 1]
+        trg_lengths = [length]
         yield Batch((src, src_lengths), (trg, trg_lengths),
                     pad_index=pad_index)
-
-
-class SimpleLossCompute:
-    """A simple loss compute and train function."""
-
-    def __init__(self, generator, loss, opt=None):
-        self.loss = loss
-        self.generator = generator
-        self.opt = opt
-
-    def __call__(self, x, y, norm):
-        x = self.generator(x)
-        loss = loss / norm
-
-        if self.opt is not None:
-            loss.backward()
-            self.opt.step()
-            self.opt.zero_grad()
-
-        return loss.data.item() * norm
 
 
 def greedy_decode(model,
@@ -426,11 +428,25 @@ def greedy_decode(model,
     return output, np.concatenate(attention_scores, axis=1)
 
 
+def reverse_lookup_words(x, length, token, vocab=None):
+    z = [0]
+    if vocab is not None:
+        z += [vocab.itos.index(i) for i in x.split(' ')]
+    while len(z) < length:
+        z += ([token])
+    return np.asarray([z])
+
+
 def lookup_words(x, vocab=None):
     if vocab is not None:
         x = [vocab.itos[i] for i in x]
 
     return [str(t) for t in x]
+
+
+def lookup_words_full_vocab(x):
+    x = [vocab[i] for i in x]
+    return [str(x) for _ in x]
 
 
 def print_examples(example_iter,
@@ -596,6 +612,10 @@ train_iter = data.BucketIterator(
     repeat=False)
 
 
+def wrap_data(data):
+    return torch.Tensor(data)
+
+
 def rebatch(pad_idx, batch):
     """Wrap torchtext batch into our own Batch class for pre-processing"""
     return Batch(batch.sentence, batch.article, pad_idx)
@@ -618,20 +638,6 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
             model,
             optim,
             print_every=print_every)
-
-        # model.eval()
-        # with torch.no_grad():
-        #     print_examples((rebatch(PAD_INDEX, x) for x in valid_iter),
-        #                    model,
-        #                    n=3,
-        #                    src_vocab=SRC.vocab,
-        #                    trg_vocab=TRG.vocab)
-
-        #     dev_perplexity = run_epoch(
-        #         (rebatch(PAD_INDEX, b) for b in valid_iter), model,
-        #         SimpleLossCompute(model.generator, criterion, None))
-        #     print("Validation perplexity: %f" % dev_perplexity)
-        #     dev_perplexities.append(dev_perplexity)
 
     return dev_perplexities
 
@@ -660,8 +666,6 @@ class FullModel(nn.Module):
         return torch.unsqueeze(loss, 0), outputs
 
 
-vocab = load_word2vec_vocab()
-pret = load_word2vec_model()
 model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3]).cuda()
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
@@ -692,7 +696,7 @@ def load_dataparallel_model():
         hidden_size=1500,
         num_layers=3,
         dropout=0.2)
-    model.load_state_dict(torch.load('/mounted/data/torch/model'))
+    model.load_state_dict(torch.load('/mounted/data/torch/parallel_model'))
     new_state_dict = OrderedDict()
     for k, v in state_dict.items():
         name = k[7:]  # remove `module.`
