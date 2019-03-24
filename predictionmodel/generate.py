@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import numpy as np
 from rearrange import check_case, tokenize
+import gc
 
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device('cuda:3')  # or set to 'cpu'
@@ -329,7 +330,8 @@ def run_epoch(data_iter, model, loss_compute, print_every=50):
                   (i, loss / batch.nseqs, print_tokens / elapsed))
             start = time.time()
             print_tokens = 0
-
+    del out, _, loss, pre_output
+    gc.clollect()
     num_gpus = torch.cuda.device_count()
     for gpu_id in range(num_gpus):
         torch.cuda.set_device(gpu_id)
