@@ -61,7 +61,7 @@ class EncoderDecoder(nn.Module):
         out, _, pre_output = self.decode(encoder_hidden, encoder_final,
                                          src_mask, trg, trg_mask)
 
-        output, loss = self.generator(pre_output)
+        output, loss = self.generator(pre_output, trg_y)
         return out, _, pre_output, output, loss
 
     def encode(self, src, src_mask, src_lengths):
