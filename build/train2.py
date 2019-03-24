@@ -16,7 +16,6 @@ import timeit
 import threading
 import queue
 
-from pympler import summary, muppy
 from multiprocessing import Process, Queue, Pool
 from rearrange import get_sentences, main
 from time import time
@@ -115,7 +114,7 @@ class MySentences(object):
 
 if __name__ == '__main__':
 
-    data_path = '/mounted/enwiki'
+    data_path = '/Volumes/mounted/enwiki'
     begin = time()
     sentences = None
     sentences = MySentences(data_path)

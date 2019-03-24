@@ -126,13 +126,6 @@ def get_sentences(file_path, loop=None):
             ]
             result = check_case(list_of_words)
             sentences += result
-    if i % 100 == 0:
-        logging.info('Done at {} in {:10.3f}s'.format(
-            file_path,
-            timeit.default_timer() - start_time))
-        start_time = timeit.default_timer()
-        i = 0
-        i += 1
     return sentences
 
 
