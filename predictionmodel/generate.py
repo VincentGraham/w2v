@@ -645,12 +645,14 @@ model = make_model(
 
 class FullModel(nn.Module):
     def __init__(self, model):
+        super(FullModel, self).__init__()
         self.model = model
         self.loss = nn.NLLLoss(reduction="sum", ignore_index=PAD_INDEX)
 
     def forward(self, inputs, targets):
         outputs = self.model(inputs)
         loss = self.loss(outputs, targets)
+        return torch.unsqueeze(loss, 0), outputs
 
 
 model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3])
