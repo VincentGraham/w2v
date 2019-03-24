@@ -365,7 +365,7 @@ class Batch:
                 self.trg_mask = self.trg_mask.cuda()
 
 
-def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
+def run_epoch(data_iter, model, print_every=50, optim=None):
     """Standard Training and Logging Function"""
 
     start = time.time()
@@ -528,7 +528,7 @@ def greedy_decode(model,
     output = []
     attention_scores = []
     hidden = None
-
+    m = AdaptiveSoftmax(256, [2000, 10000])
     for i in range(max_len):
         with torch.no_grad():
             out, hidden, pre_output = model.decode(encoder_hidden,
@@ -537,7 +537,8 @@ def greedy_decode(model,
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-            prob, _ = model.generator(pre_output[:, -1], pre_output[:, -1])
+            prob = m(pre_output[:, -1], pre_output[:, -1])
+            log_prob = m.log_prob(prob)
 
         _, next_word = torch.max(prob, dim=1)
         next_word = next_word.data.item()
@@ -726,11 +727,7 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         print("Epoch", epoch)
         model.train()
         train_perplexity = run_epoch(
-            train_iter,
-            model,
-            SimpleLossCompute(model.generator, criterion, optim),
-            print_every=print_every,
-            optim=optim)
+            train_iter, model, print_every=print_every, optim=optim)
 
         # model.eval()
         # with torch.no_grad():

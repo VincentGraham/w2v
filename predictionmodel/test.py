@@ -57,8 +57,9 @@ class EncoderDecoder(nn.Module):
         out, _, pre_output = self.decode(encoder_hidden, encoder_final,
                                          src_mask, trg, trg_mask)
 
-        output, loss = self.generator(pre_output, trg_y)
-        return out, _, pre_output, output, loss
+        # output, loss = self.generator(pre_output, trg_y)
+        # return out, _, pre_output, output, loss
+        return out, _, pre_output
 
     def encode(self, src, src_mask, src_lengths):
         return self.encoder(self.src_embed(src), src_mask, src_lengths)
@@ -369,19 +370,29 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
         batch = rebatch(PAD_INDEX, batch)
-        out, _, pre_output, output, loss = model.module.forward(
+        out, _, pre_output, = model.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
             batch.src_lengths, batch.trg_lengths, batch.trg_y)
         # loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
-        loss = loss / batch.nseqs
+        m = AdaptiveSoftmax(256, [2000, 10000])
+        criterion = AdaptiveLoss([2000, 10000])
+
+        x = pre_output.view(-1, pre_output.size()[2])
+        y = batch.trg_y.view(batch.y.size()[0] * batch.trg_y.size()[1])
+
+        output = m(x, y)
+        loss = criterion(output, y)
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens
         loss.backward()
         optim.step()
         optim.zero_grad()
         total_loss += loss.data.item * batch.nseqs
+        del loss
+        del x
+        del y
 
-        if i % print_every == 0:
+        if model.training and i % print_every == 0:
             elapsed = time.time() - start
             print("Epoch Step: %d Loss: %f Tokens per Sec: %f" %
                   (i, loss / batch.nseqs, print_tokens / elapsed))
@@ -466,7 +477,7 @@ def data_gen_single(sentence,
 class SimpleLossCompute:
     """A simple loss compute and train function."""
 
-    def __init__(self, generator, criterion, opt=None):
+    def __init__(self, criterion, opt=None):
         self.generator = generator
         self.criterion = criterion
         self.opt = opt
@@ -504,7 +515,7 @@ def greedy_decode(model,
     output = []
     attention_scores = []
     hidden = None
-
+    m = AdaptiveSoftmax(256, [2000, 10000])
     for i in range(max_len):
         with torch.no_grad():
             out, hidden, pre_output = model.module.decode(
@@ -513,8 +524,8 @@ def greedy_decode(model,
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-            prob, _ = model.module.generator(pre_output[:, -1],
-                                             pre_output[:, -1])
+            prob = m(pre_output[:, -1], pre_output[:, -1])
+            log_prob = m.log_prob(prob)
 
         _, next_word = torch.max(prob, dim=1)
         next_word = next_word.data.item()
@@ -702,11 +713,7 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         print("Epoch", epoch)
         model.train()
         train_perplexity = run_epoch(
-            train_iter,
-            model,
-            SimpleLossCompute(model.module.generator, criterion, optim),
-            print_every=print_every,
-            optim=optim)
+            train_iter, model, print_every=print_every, optim=optim)
 
         # model.eval()
         # with torch.no_grad():
