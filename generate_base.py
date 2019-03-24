@@ -394,6 +394,8 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         y = batch.trg_y.contiguous().view(
             batch.trg_y.size()[0] * batch.trg_y.size()[1])
 
+        print(x.size(), y.size(), batch.trg_y.size())
+
         output = m(x, y)
         loss = criterion(output, y)
         total_tokens += batch.ntokens
@@ -580,44 +582,22 @@ def print_examples(example_iter,
     model.eval()
     count = 0
     print()
+    with torch.no_grad():
+        if src_vocab is not None and trg_vocab is not None:
+            src_eos_index = src_vocab.stoi[EOS_TOKEN]
+            trg_sos_index = trg_vocab.stoi[SOS_TOKEN]
+            trg_eos_index = trg_vocab.stoi[EOS_TOKEN]
+        else:
+            src_eos_index = None
+            trg_sos_index = 1
+            trg_eos_index = None
 
-    if src_vocab is not None and trg_vocab is not None:
-        src_eos_index = src_vocab.stoi[EOS_TOKEN]
-        trg_sos_index = trg_vocab.stoi[SOS_TOKEN]
-        trg_eos_index = trg_vocab.stoi[EOS_TOKEN]
-    else:
-        src_eos_index = None
-        trg_sos_index = 1
-        trg_eos_index = None
-
-    if isinstance(example_iter, Batch):
-        batch = example_iter
-        src = batch.src.cpu().numpy()[0, :]
-        trg = batch.trg_y.cpu().numpy()[0, :]
-
-        # remove </s> (if it is there)
-        result, _ = greedy_decode(
-            model,
-            batch.src,
-            batch.src_mask,
-            batch.src_lengths,
-            max_len=max_len,
-            sos_index=trg_sos_index,
-            eos_index=trg_eos_index)
-        print("Example #%d" % (i + 1))
-        print("Src : ", " ".join(lookup_words_full_vocab(src)))
-        print("Trg : ", " ".join(lookup_words_full_vocab(trg)))
-        print("Pred: ", " ".join(lookup_words_full_vocab(result)))
-        print()
-
-        return " ".join(lookup_words(result, vocab=trg_vocab))
-    else:
-        for i, batch in enumerate(example_iter):
+        if isinstance(example_iter, Batch):
+            batch = example_iter
             src = batch.src.cpu().numpy()[0, :]
             trg = batch.trg_y.cpu().numpy()[0, :]
 
             # remove </s> (if it is there)
-
             result, _ = greedy_decode(
                 model,
                 batch.src,
@@ -632,10 +612,32 @@ def print_examples(example_iter,
             print("Pred: ", " ".join(lookup_words_full_vocab(result)))
             print()
 
-            count += 1
-            if count == n:
-                break
             return " ".join(lookup_words(result, vocab=trg_vocab))
+        else:
+            for i, batch in enumerate(example_iter):
+                src = batch.src.cpu().numpy()[0, :]
+                trg = batch.trg_y.cpu().numpy()[0, :]
+
+                # remove </s> (if it is there)
+
+                result, _ = greedy_decode(
+                    model,
+                    batch.src,
+                    batch.src_mask,
+                    batch.src_lengths,
+                    max_len=max_len,
+                    sos_index=trg_sos_index,
+                    eos_index=trg_eos_index)
+                print("Example #%d" % (i + 1))
+                print("Src : ", " ".join(lookup_words_full_vocab(src)))
+                print("Trg : ", " ".join(lookup_words_full_vocab(trg)))
+                print("Pred: ", " ".join(lookup_words_full_vocab(result)))
+                print()
+
+                count += 1
+                if count == n:
+                    break
+                return " ".join(lookup_words(result, vocab=trg_vocab))
 
 
 def plot_perplexity(perplexities):

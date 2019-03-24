@@ -12,6 +12,7 @@ import gc
 import io
 import os
 import psutil
+from adasoft import AdaptiveLoss, AdaptiveSoftmax
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -46,8 +47,8 @@ class EncoderDecoder(nn.Module):
         self.decoder = decoder
         self.src_embed = src_embed
         self.trg_embed = trg_embed
-        self.generator = nn.AdaptiveLogSoftmaxWithLoss(
-            nh, vs, cutoffs=[round(vs / 30), 3 * round(vs / 30)], div_value=4)
+        # self.generator = nn.AdaptiveLogSoftmaxWithLoss(
+        #     nh, vs, cutoffs=[round(vs / 30), 3 * round(vs / 30)], div_value=4)
 
     def forward(self, src, trg, src_mask, trg_mask, src_lengths, trg_lengths,
                 trg_y):
