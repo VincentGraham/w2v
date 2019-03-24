@@ -6,7 +6,6 @@ import logging
 import re
 import queue
 import asyncio
-from asyncio import loop
 
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -99,7 +98,6 @@ i = 0
 
 
 def get_sentences(file_path, loop=None):
-    global i
     start_time = timeit.default_timer()
     sentences = []
     for line in open(file_path, encoding='utf-8', errors='ignore'):
