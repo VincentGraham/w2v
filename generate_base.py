@@ -769,6 +769,25 @@ def load_model():
     return model
 
 
+def load_dataparallel_model():
+    from collections import OrderedDict
+    model = make_model(
+        len(SRC.vocab),
+        len(TRG.vocab),
+        emb_size=500,
+        hidden_size=1500,
+        num_layers=3,
+        dropout=0.2)
+    model.load_state_dict(torch.load('/mounted/data/torch/parallel_model'))
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k[7:]  # remove `module.`
+        new_state_dict[name] = v
+    model.load_state_dict(new_state_dict)
+    model.eval()
+    return model
+
+
 # x = list(data_gen("korea"))
 
 # if not FAST:

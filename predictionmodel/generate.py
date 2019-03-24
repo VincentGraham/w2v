@@ -18,7 +18,6 @@ DEVICE2 = torch.device('cuda:2')
 DEVICE3 = torch.device('cuda:0')
 
 
-
 class Batch:
     """Object for holding a batch of data with mask during training.
     Input is a batch from a torch text iterator.
@@ -448,7 +447,3 @@ def load_dataparallel_model():
     model.load_state_dict(new_state_dict)
     model.eval()
     return model
-
-
-    class CustomDataField(object):
-        def __init__(self, sentence, article)
