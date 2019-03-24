@@ -274,7 +274,7 @@ class Batch:
     def __init__(self, src, trg, pad_index=0):
 
         src, src_lengths = src
-
+        print(src)
         self.src = src
         self.src_lengths = src_lengths
         self.src_mask = (src != pad_index).unsqueeze(-2)
@@ -489,43 +489,6 @@ def print_examples(example_iter,
         return " ".join(lookup_words(result, vocab=trg_vocab))
 
 
-def train_copy_task():
-    """Train the simple copy task."""
-    num_words = 11
-    criterion = nn.NLLLoss(reduction="sum", ignore_index=0)
-    model = make_model(num_words, num_words, emb_size=500, hidden_size=64)
-    optim = torch.optim.Adam(model.parameters(), lr=0.0003)
-    eval_data = list(
-        data_gen(num_words=num_words, batch_size=1, num_batches=100))
-
-    dev_perplexities = []
-
-    if USE_CUDA:
-        model.cuda()
-
-    for epoch in range(10):
-
-        print("Epoch %d" % epoch)
-
-        # train
-        model.train()
-        data = data_gen(num_words=num_words, batch_size=32, num_batches=100)
-        run_epoch(data, model,
-                  SimpleLossCompute(model.generator, criterion, optim))
-
-        # evaluate
-        model.eval()
-        with torch.no_grad():
-            perplexity = run_epoch(
-                eval_data, model,
-                SimpleLossCompute(model.generator, criterion, None))
-            print("Evaluation perplexity: %f" % perplexity)
-            dev_perplexities.append(perplexity)
-            print_examples(eval_data, model, n=2, max_len=9)
-
-    return dev_perplexities
-
-
 def plot_perplexity(perplexities):
     """plot perplexities"""
     plt.title("Perplexity per Epoch")
@@ -581,7 +544,7 @@ if True:
         validation='test.csv',
         format="csv",
         fields=data_fields)
-    MIN_FREQ = 5  # NOTE: we limit the vocabulary to frequent words for speed
+    MIN_FREQ = 1  # NOTE: we limit the vocabulary to frequent words for speed
     VOCAB = vocab.Vectors('model.txt', cache='data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
     TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
@@ -690,10 +653,10 @@ def train_model():
         len(TRG.vocab),
         emb_size=500,
         hidden_size=256,
-        num_layers=1,
+        num_layers=3,
         dropout=0.1)
 
-    dev_perplexities = train(model, print_every=10, num_epochs=10)
+    dev_perplexities = train(model, print_every=100, num_epochs=100)
 
     torch.save(model.state_dict(), 'data/torch/model')
     print("saved model")
@@ -719,6 +682,8 @@ def load_model():
 if not FAST:
     model = load_model()
 
+train_model()
+
 # while True:
 #     works = True
 #     i = input("Learn more about: ")
@@ -735,64 +700,61 @@ if not FAST:
 #             src_vocab=SRC.vocab,
 #             trg_vocab=TRG.vocab)
 
-from telegram.ext import Updater, InlineQueryHandler, CommandHandler
-from telegram import constants
-import requests
-import re
-import time
+# from telegram.ext import Updater, InlineQueryHandler, CommandHandler
+# from telegram import constants
+# import requests
+# import re
+# import time
 
+# def send_message(bot, chat_id, text: str, **kwargs):
+#     if len(text) <= 500:
+#         return bot.send_message(chat_id, text, **kwargs)
 
-def send_message(bot, chat_id, text: str, **kwargs):
-    if len(text) <= 500:
-        return bot.send_message(chat_id, text, **kwargs)
+#     parts = []
+#     while len(text) > 0:
+#         if len(text) > 500:
+#             part = text[:500]
+#             first_lnbr = part.rfind('\n')
+#             if first_lnbr != -1:
+#                 parts.append(part[:first_lnbr])
+#                 text = text[first_lnbr:]
+#             else:
+#                 parts.append(part)
+#                 text = text[500:]
+#         else:
+#             parts.append(text)
+#             break
 
-    parts = []
-    while len(text) > 0:
-        if len(text) > 500:
-            part = text[:500]
-            first_lnbr = part.rfind('\n')
-            if first_lnbr != -1:
-                parts.append(part[:first_lnbr])
-                text = text[first_lnbr:]
-            else:
-                parts.append(part)
-                text = text[500:]
-        else:
-            parts.append(text)
-            break
+#     msg = None
+#     for part in parts:
+#         msg = bot.send_message(chat_id, part, **kwargs)
+#         time.sleep(.25)
+#     return msg
 
-    msg = None
-    for part in parts:
-        msg = bot.send_message(chat_id, part, **kwargs)
-        time.sleep(.25)
-    return msg
+# def explain(bot, i):
+#     id = i.message.chat.id
+#     i = i.message.text[2:].strip()
+#     works = True
+#     if i == "HELP":
+#         send_message(bot, chat_id=id, text=str(SRC.vocab.itos))
+#         works = False
+#     for c in i.split():
+#         if c not in SRC.vocab.itos:
+#             works = False
+#     if works:
+#         send_message(
+#             bot,
+#             chat_id=id,
+#             text=i + ': ' + print_examples(
+#                 list(data_gen(i)),
+#                 model,
+#                 n=3,
+#                 src_vocab=SRC.vocab,
+#                 trg_vocab=TRG.vocab))
 
-
-def explain(bot, i):
-    id = i.message.chat.id
-    i = i.message.text[2:].strip()
-    works = True
-    if i == "HELP":
-        send_message(bot, chat_id=id, text=str(SRC.vocab.itos))
-        works = False
-    for c in i.split():
-        if c not in SRC.vocab.itos:
-            works = False
-    if works:
-        send_message(
-            bot,
-            chat_id=id,
-            text=i + ': ' + print_examples(
-                list(data_gen(i)),
-                model,
-                n=3,
-                src_vocab=SRC.vocab,
-                trg_vocab=TRG.vocab))
-
-
-print('loaded all that stuff')
-updater = Updater('675465827:AAEeL4zI3M5eH-heceYhPpIZqK-rFlup7N4')
-dp = updater.dispatcher
-dp.add_handler(CommandHandler('l', explain))
-updater.start_polling()
-updater.idle()
+# print('loaded all that stuff')
+# updater = Updater('675465827:AAEeL4zI3M5eH-heceYhPpIZqK-rFlup7N4')
+# dp = updater.dispatcher
+# dp.add_handler(CommandHandler('l', explain))
+# updater.start_polling()
+# updater.idle()
