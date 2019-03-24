@@ -46,7 +46,7 @@ class Batch:
             self.trg_mask = (self.trg_y != pad_index)
             self.ntokens = (self.trg_y != pad_index).data.sum().item()
 
-        if False:
+        if USE_CUDA:
             self.src = self.src.cuda()
             self.src_mask = self.src_mask.cuda()
 

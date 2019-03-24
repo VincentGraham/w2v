@@ -17,6 +17,7 @@ logging.basicConfig(
 
 USE_CUDA = 0
 DEVICE = torch.device('cpu')
+
 # or set to 'cpu'
 FAST = False
 ACCUMULATION = 32
@@ -380,7 +381,7 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
         #         del obj
         #         gc.collect()
         batch = rebatch(PAD_INDEX, batch)
-        out, _, pre_output, __, loss = model.forward(
+        out, _, pre_output, output, loss = model.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
             batch.src_lengths, batch.trg_lengths, batch.trg_y)
         # loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
