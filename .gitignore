@@ -3,3 +3,4 @@
 __pycache__
 data
 .data
+predictionmodel/openmpi-3.0.0

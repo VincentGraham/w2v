@@ -9,10 +9,10 @@ import numpy as np
 from rearrange import check_case, tokenize
 
 USE_CUDA = torch.cuda.is_available()
-DEVICE = torch.device('cuda:0')  # or set to 'cpu'
+DEVICE = torch.device('cuda:3')  # or set to 'cpu'
 DEVICE1 = torch.device('cuda:1')
 DEVICE2 = torch.device('cuda:2')
-DEVICE3 = torch.device('cuda:3')
+DEVICE3 = torch.device('cuda:0')
 
 vocab = load_word2vec_vocab()
 pret = load_word2vec_model()
