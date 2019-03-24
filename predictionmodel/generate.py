@@ -30,12 +30,14 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, trg, src_mask, trg_mask, src_lengths, trg_lengths):
         """Take in and process masked src and target sequences."""
-        encoder_hidden, encoder_final = self.encode(src, src_mask, src_lengths)
-        return self.decode(encoder_hidden, encoder_final, src_mask, trg,
-                           trg_mask)
+        encoder_hidden, encoder_final = checkpoint(self.encode, src, src_mask,
+                                                   src_lengths)
+        return checkpoint(self.decode, encoder_hidden, encoder_final, src_mask,
+                          trg, trg_mask)
 
     def encode(self, src, src_mask, src_lengths):
-        return self.encoder(self.src_embed(src), src_mask, src_lengths)
+        return checkpoint(self.encoder, self.src_embed(src), src_mask,
+                          src_lengths)
 
     def decode(self,
                encoder_hidden,
@@ -44,7 +46,8 @@ class EncoderDecoder(nn.Module):
                trg,
                trg_mask,
                decoder_hidden=None):
-        return self.decoder(
+        return checkpoint(
+            self.decoder,
             self.trg_embed(trg),
             encoder_hidden,
             encoder_final,
@@ -61,7 +64,7 @@ class Generator(nn.Module):
         self.proj = nn.Linear(hidden_size, vocab_size, bias=False)
 
     def forward(self, x):
-        return F.log_softmax(self.proj(x), dim=-1)
+        return checkpoint(F.log_softmax, self.proj(x), dim=-1)
 
 
 class Encoder(nn.Module):
@@ -92,8 +95,9 @@ class Encoder(nn.Module):
         # we need to manually concatenate the final states for both directions
         fwd_final = final[0:final.size(0):2]
         bwd_final = final[1:final.size(0):2]
-        final = torch.cat([fwd_final, bwd_final],
-                          dim=2)  # [num_layers, batch, 2*dim]
+        final = checkpoint(
+            torch.cat, [fwd_final, bwd_final],
+            dim=2)  # [num_layers, batch, 2*dim]
 
         return output, final
 
@@ -235,11 +239,11 @@ class BahdanauAttention(nn.Module):
         scores.data.masked_fill_(mask == 0, -float('inf'))
 
         # Turn scores to probabilities.
-        alphas = F.softmax(scores, dim=-1)
+        alphas = checkpoint(F.softmax, scores, dim=-1)
         self.alphas = alphas
 
         # The context vector is the weighted sum of the values.
-        context = checkpoint(torch.bmm(alphas, value))
+        context = checkpoint(torch.bmm, alphas, value)
 
         # context shape: [B, 1, 2D], alphas shape: [B, 1, M]
         return context, alphas
