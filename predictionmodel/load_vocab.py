@@ -104,3 +104,10 @@ def make():
 
 
 # make()
+
+
+def load_csv_for_tensor():
+    """Call datadict[sentence][i] and datadict[article][i] with same i"""
+    data = pd.read_csv("data/test.csv")
+    data_dict = {col: data[col] for col in data.columns}
+    return data_dict

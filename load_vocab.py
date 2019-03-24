@@ -111,6 +111,3 @@ def load_csv_for_tensor():
     data = pd.read_csv("data/test.csv")
     data_dict = {col: data[col] for col in data.columns}
     return data_dict
-
-
-load_csv_for_tensor()
