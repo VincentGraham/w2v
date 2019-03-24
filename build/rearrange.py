@@ -5,6 +5,8 @@ import random
 import logging
 import re
 import queue
+import asyncio
+from asyncio import loop
 
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -93,7 +95,11 @@ def check_case(sentence):
     return out
 
 
-def get_sentences(file_path):
+i = 0
+
+
+def get_sentences(file_path, loop=None):
+    global i
     start_time = timeit.default_timer()
     sentences = []
     for line in open(file_path, encoding='utf-8', errors='ignore'):
@@ -122,10 +128,13 @@ def get_sentences(file_path):
             ]
             result = check_case(list_of_words)
             sentences += result
-    logging.info('Done at {} in {:10.3f}s'.format(
-        file_path,
-        timeit.default_timer() - start_time))
-    start_time = timeit.default_timer()
+    if i % 100 == 0:
+        logging.info('Done at {} in {:10.3f}s'.format(
+            file_path,
+            timeit.default_timer() - start_time))
+        start_time = timeit.default_timer()
+        i = 0
+        i += 1
     return sentences
 
 

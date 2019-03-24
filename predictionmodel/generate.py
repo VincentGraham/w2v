@@ -239,7 +239,7 @@ class BahdanauAttention(nn.Module):
         self.alphas = alphas
 
         # The context vector is the weighted sum of the values.
-        context = torch.bmm(alphas, value)
+        context = checkpoint(torch.bmm(alphas, value))
 
         # context shape: [B, 1, 2D], alphas shape: [B, 1, M]
         return context, alphas
@@ -653,6 +653,8 @@ class FullModel(nn.Module):
         return torch.unsqueeze(loss, 0), outputs
 
 
+vocab = load_word2vec_vocab()
+pret = load_word2vec_model()
 model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3]).cuda()
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)

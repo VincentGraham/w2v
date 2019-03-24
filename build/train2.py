@@ -123,7 +123,7 @@ if __name__ == '__main__':
         epochs = int(sys.argv[1])
         a = float(sys.argv[2])
     else:
-        epochs = 1
+        epochs = 50
         a = 0.001
 
     model = gensim.models.Word2Vec(
