@@ -74,7 +74,9 @@ class AdaptiveSoftmax(nn.Module):
 
         for i in range(len(self.id)):
             if self.id[i] is not None:
-                output.append(self.tail[i](input.index_select(0, self.id[i])))
+                print(input, self.id)
+                output.append(self.tail[i](torch.index_select(
+                    input, 0, self.id[i])))
 
             else:
                 output.append(None)
@@ -239,8 +241,8 @@ class AdaptiveLoss(nn.Module):
         for i in range(len(input)):
             if input[i] is not None:
                 print(target[i].min(), target[i].max(), input[i].size(1))
-                # assert target[i].min() >= 0 and target[i].max(
-                # ) <= input[i].size(1)
+                assert target[i].min() >= 0 and target[i].max(
+                ) <= input[i].size(1)
                 output = output + F.cross_entropy(
                     input[i], target[i], size_average=False)
 

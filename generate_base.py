@@ -396,7 +396,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
 
         print(x.size(), y.size(), batch.trg_y.size())
 
-        output = m(x, y)
+        output = m(pre_output, batch.trg_y)
         loss = criterion(output, y)
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens

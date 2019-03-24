@@ -39,7 +39,7 @@ def cleanhtml(raw_html):
 
 q = Queue()
 output = Queue()
-THREADS = 40
+THREADS = 10
 
 
 class MyThread(threading.Thread):
