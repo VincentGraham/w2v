@@ -297,7 +297,7 @@ class Batch:
             self.trg_mask = (self.trg_y != pad_index)
             self.ntokens = (self.trg_y != pad_index).data.sum().item()
 
-        if True:
+        if USE_CUDA:
             self.src = self.src.cuda()
             self.src_mask = self.src_mask.cuda()
 
@@ -592,8 +592,7 @@ train_iter = data.BucketIterator(
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
-    repeat=False,
-    device=DEVICE
+    repeat=False
 )
 
 
@@ -649,7 +648,7 @@ model = make_model(
 class FullModel(nn.Module):
     def __init__(self, model, loss):
 
-model = nn.DataParallel(model)
+model = nn.DataParallel(model).cuda()
 
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
