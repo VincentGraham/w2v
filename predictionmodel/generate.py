@@ -636,6 +636,9 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
     return dev_perplexities
 
 
+vocab = load_word2vec_vocab()
+pret = load_word2vec_model()
+
 model = make_model(
     len(SRC.vocab),
     len(TRG.vocab),
