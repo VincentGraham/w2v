@@ -8,7 +8,9 @@ import queue
 import asyncio
 import numpy as np
 from functools import reduce
-# import it
+# import pyximport
+# pyximport.install()
+# from file_io import readf
 
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -209,6 +211,8 @@ def get_sentences(file_path):
     start_time = timeit.default_timer()
     sentences = []
     for line in open(file_path, encoding='utf-8', errors='ignore'):
+        # for line in readf(file_path):
+        # line = line.decode('utf-8')
         line = cleanhtml(line)
         line = line.strip()
         if line == '':
@@ -234,6 +238,7 @@ def get_sentences(file_path):
             ]
             result = check_case_fast(list_of_words)
             sentences += result
+        # print(sentences)
     return sentences
 
 
@@ -251,19 +256,19 @@ def main(tasks, outqueue):
         outqueue.put(x)
 
 
-# start_time = timeit.default_timer()
-# for root, dirs, files in os.walk('/Users/vincent/Desktop/mounted/enwiki/AC'):
-#     paths = []
-#     for filename in files:
-#         file_path = root + '/' + filename
-#         if filename == '.DS_Store':
-#             continue
-#         paths.append(file_path)
-#     pool = Pool(12)
-#     y = pool.map(get_sentences, paths)
+start_time = timeit.default_timer()
+for root, dirs, files in os.walk('/Users/vincent/Desktop/mounted/enwiki/AC'):
+    paths = []
+    for filename in files:
+        file_path = root + '/' + filename
+        if filename == '.DS_Store':
+            continue
+        paths.append(file_path)
+    pool = Pool(12)
+    y = pool.map(get_sentences, paths)
 
-#     print('Done at {}'.format(root), end=" ")
-#     print(timeit.default_timer() - start_time)  # Time to beat 6.10
+    print('Done at {}'.format(root), end=" ")
+    print(timeit.default_timer() - start_time)  # Time to beat 6.10
 
 # On 100MB (dir AC, process after assembling 1 big list 100mb)
 # 1 Pool  : 18.69576609700016
