@@ -11,6 +11,7 @@ import logging
 import gc
 import io
 import os
+import psutil
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -36,19 +37,32 @@ MAX_LEN = 10
 
 
 class EncoderDecoder(nn.Module):
-    def __init__(self, encoder, decoder, src_embed, trg_embed, generator):
+    def __init__(self,
+                 encoder,
+                 decoder,
+                 src_embed,
+                 trg_embed,
+                 generator,
+                 nh=0,
+                 vs=0):
         super(EncoderDecoder, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.src_embed = src_embed
         self.trg_embed = trg_embed
-        self.generator = generator
+        self.generator = nn.AdaptiveLogSoftmaxWithLoss(
+            nh, vs, cutoffs=[round(vs / 30), 3 * round(vs / 30)], div_value=4)
 
-    def forward(self, src, trg, src_mask, trg_mask, src_lengths, trg_lengths):
+    def forward(self, src, trg, src_mask, trg_mask, src_lengths, trg_lengths,
+                trg_y):
         """Take in and process masked src and target sequences."""
         encoder_hidden, encoder_final = self.encode(src, src_mask, src_lengths)
-        return self.decode(encoder_hidden, encoder_final, src_mask, trg,
-                           trg_mask)
+
+        out, _, pre_output = self.decode(encoder_hidden, encoder_final,
+                                         src_mask, trg, trg_mask)
+
+        output, loss = self.generator(pre_output)
+        return out, _, pre_output, output, loss
 
     def encode(self, src, src_mask, src_lengths):
         return self.encoder(self.src_embed(src), src_mask, src_lengths)
@@ -80,10 +94,22 @@ class Generator(nn.Module):
         return F.log_softmax(self.proj(x), dim=-1)
 
 
+class GeneratorTest(nn.Module):
+    def __init__(self, nh, vs):
+        super(GeneratorTest, self).__init__()
+        self.out = nn.AdaptiveLogSoftmaxWithLoss(
+            nh, vs, cutoffs=[round(vs / 30), 3 * round(vs / 30)], div_value=4)
+
+    def forward(x, y):
+        x = x.view(-1, x.size()[2])
+        y = y.view(y.size()[0] * y.size()[1])
+        return self.out(x, y)
+
+
 class Encoder(nn.Module):
     """Encodes a sequence of word embeddings"""
 
-    def __init__(self, input_size, hidden_size, num_layers=1, dropout=0.):
+    def __init__(self, input_size, hidden_size, num_layers=1, dropout=0.1):
         super(Encoder, self).__init__()
         self.num_layers = num_layers
         self.rnn = nn.GRU(
@@ -172,7 +198,7 @@ class Decoder(nn.Module):
     def repackage_hidden(h):
         """Wraps hidden states in new Variables, to detach them from their history."""
         if type(h) == Variable:
-            return Variable(h.data, requires_grad=True)
+            return Variable(h.data)
         else:
             return tuple(repackage_hidden(v) for v in h)
 
@@ -294,7 +320,7 @@ def make_model(src_vocab,
             dropout=dropout),
         nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors)),
         nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors)),
-        Generator(hidden_size, tgt_vocab))
+        GeneratorTest(hidden_size, tgt_vocab), hidden_size, tgt_vocab)
 
     return model
 
@@ -344,7 +370,6 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
     total_loss = 0
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
-        gc.collect()
         # for obj in gc.get_objects():
         #     if (not os.path.isdir(str(obj) and not isinstance(obj, io.IOBase))
         #             and torch.is_tensor(obj)) or (os.path.isdir(
@@ -355,21 +380,17 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
         #         del obj
         #         gc.collect()
         batch = rebatch(PAD_INDEX, batch)
-        out, _, pre_output = model.forward(
+        out, _, pre_output, __, loss = model.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
-            batch.src_lengths, batch.trg_lengths)
-        loss, norm = loss_compute(pre_output, batch.trg_y, batch.nseqs)
-        loss = (loss.data.item() * norm) / ACCUMULATION
-        total_loss += float(loss)
-
-        if (i + 1) % ACCUMULATION == 0:
-            if self.opt is not None:
-                loss.backward()
-                self.opt.step()
-                self.opt.zero_grad()
-
+            batch.src_lengths, batch.trg_lengths, batch.trg_y)
+        # loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
+        loss = loss / batch.nseqs
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens
+        loss.backward()
+        optim.step()
+        optim.zero_grad()
+        total_loss += loss.data.item * batch.nseqs
 
         if model.training and i % print_every == 0:
             elapsed = time.time() - start
@@ -377,6 +398,7 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
                   (i, loss / batch.nseqs, print_tokens / elapsed))
             start = time.time()
             print_tokens = 0
+
     return math.exp(total_loss * norm / float(total_tokens))
 
 
@@ -461,18 +483,18 @@ class SimpleLossCompute:
         self.opt = opt
 
     def __call__(self, x, y, norm):
-        x = self.generator(x)
-        loss = self.criterion(x.contiguous().view(-1, x.size(-1)),
-                              y.contiguous().view(-1))
+
+        output, loss = self.generator(x)
+        # loss = self.criterion(z.contiguous().view(-1, z.size(-1)),
+        #                       y.contiguous().view(-1))
         loss = loss / norm
-        return loss, norm  # NEW TEST
 
-        # if self.opt is not None:
-        #     loss.backward()
-        #     self.opt.step()
-        #     self.opt.zero_grad()
+        if self.opt is not None:
+            loss.backward()
+            self.opt.step()
+            self.opt.zero_grad()
 
-        # return loss.data.item() * norm
+        return loss.data.item() * norm
 
 
 def greedy_decode(model,
@@ -502,7 +524,7 @@ def greedy_decode(model,
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-            prob = model.generator(pre_output[:, -1])
+            prob, _ = model.generator(pre_output[:, -1], pre_output[:, -1])
 
         _, next_word = torch.max(prob, dim=1)
         next_word = next_word.data.item()
