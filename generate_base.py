@@ -688,15 +688,16 @@ train_iter = data.BucketIterator(
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
-    repeat=False)
+    repeat=False,
+    device=DEVICE)
 
 
 def rebatch(pad_idx, batch):
     """Wrap torchtext batch into our own Batch class for pre-processing"""
-    for t in batch.sentence:
-        t.to(DEVICE)
-    for t in batch.article:
-        t.to(DEVICE)
+    # for t in batch.sentence:
+    #     t.to(DEVICE)
+    # for t in batch.article:
+    #     t.to(DEVICE)
     return Batch(batch.sentence, batch.article, pad_idx)
 
 
