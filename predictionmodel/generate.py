@@ -605,7 +605,7 @@ print_data_info(train_data, valid_data, SRC, TRG)
 
 train_iter = data.BucketIterator(
     train_data,
-    batch_size=64,
+    batch_size=1,
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
