@@ -656,14 +656,14 @@ if True:
     data_fields = [('sentence', SRC), ('article', TRG)]
 
     train_data, valid_data = data.TabularDataset.splits(
-        path="data",
+        path="/mounted/data",
         train='test.csv',
         validation='test.csv',
         format="csv",
         fields=data_fields)
 
     MIN_FREQ = 1  # NOTE: we limit the vocabulary to frequent words for speed
-    VOCAB = vv.Vectors('model.txt', cache='data')
+    VOCAB = vv.Vectors('model.txt', cache='/mounted/data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
     TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
     print(PAD_INDEX, SOS_INDEX, EOS_INDEX)
