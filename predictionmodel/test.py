@@ -361,7 +361,7 @@ class Batch:
                 self.trg_mask = self.trg_mask.cuda()
 
 
-def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
+def run_epoch(data_iter, model, print_every=50, optim=None):
     """Standard Training and Logging Function"""
 
     start = time.time()
