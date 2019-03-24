@@ -274,7 +274,6 @@ class Batch:
     def __init__(self, src, trg, pad_index=0):
 
         src, src_lengths = src
-        print(src)
         self.src = src
         self.src_lengths = src_lengths
         self.src_mask = (src != pad_index).unsqueeze(-2)
@@ -501,7 +500,6 @@ from torchtext import data, datasets, vocab
 
 if True:
     import json
-    import spacy
 
     def token(text):
         return [
