@@ -592,8 +592,7 @@ train_iter = data.BucketIterator(
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
-    repeat=False
-)
+    repeat=False)
 
 
 def rebatch(pad_idx, batch):
@@ -645,11 +644,10 @@ model = make_model(
     num_layers=2,
     dropout=0.1)
 
-class FullModel(nn.Module):
-    def __init__(self, model, loss):
+# class FullModel(nn.Module):
+#     def __init__(self, model, loss):
 
 model = nn.DataParallel(model).cuda()
-
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
 
