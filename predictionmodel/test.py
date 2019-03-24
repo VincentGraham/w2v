@@ -15,7 +15,7 @@ import psutil
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-USE_CUDA = 0
+USE_CUDA = True
 DEVICE = torch.device('cuda:0')  # or set to 'cpu'
 DEVICE1 = torch.device('cuda:1')
 DEVICE2 = torch.device('cuda:2')
