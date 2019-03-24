@@ -12,6 +12,7 @@ import gc
 import io
 import os
 import psutil
+from adasoft import AdaptiveLoss, AdaptiveSoftmax
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -51,8 +52,8 @@ class EncoderDecoder(nn.Module):
         self.decoder = decoder
         self.src_embed = src_embed
         self.trg_embed = trg_embed
-        self.generator = nn.AdaptiveLogSoftmaxWithLoss(
-            nh, vs, cutoffs=[round(vs / 30), 3 * round(vs / 30)], div_value=4)
+        # self.generator = nn.AdaptiveLogSoftmaxWithLoss(
+        #     nh, vs, cutoffs=[round(vs / 30), 3 * round(vs / 30)], div_value=4)
 
     def forward(self, src, trg, src_mask, trg_mask, src_lengths, trg_lengths,
                 trg_y):
@@ -62,8 +63,9 @@ class EncoderDecoder(nn.Module):
         out, _, pre_output = self.decode(encoder_hidden, encoder_final,
                                          src_mask, trg, trg_mask)
 
-        output, loss = self.generator(pre_output, trg_y)
-        return out, _, pre_output, output, loss
+        # output, loss = self.generator(pre_output, trg_y)
+        # return out, _, pre_output, output, loss
+        return out, _, pre_output
 
     def encode(self, src, src_mask, src_lengths):
         return self.encoder(self.src_embed(src), src_mask, src_lengths)
@@ -381,17 +383,27 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
         #         del obj
         #         gc.collect()
         batch = rebatch(PAD_INDEX, batch)
-        out, _, pre_output, output, loss = model.forward(
+        out, _, pre_output, = model.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
             batch.src_lengths, batch.trg_lengths, batch.trg_y)
         # loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
-        loss = loss / batch.nseqs
+        m = AdaptiveSoftmax(256, [2000, 10000])
+        criterion = AdaptiveLoss([2000, 10000])
+
+        x = pre_output.view(-1, pre_output.size()[2])
+        y = batch.trg_y.view(batch.y.size()[0] * batch.trg_y.size()[1])
+
+        output = m(x, y)
+        loss = criterion(output, y)
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens
         loss.backward()
         optim.step()
         optim.zero_grad()
         total_loss += loss.data.item * batch.nseqs
+        del loss
+        del x
+        del y
 
         if model.training and i % print_every == 0:
             elapsed = time.time() - start
