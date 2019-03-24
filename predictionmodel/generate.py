@@ -307,7 +307,7 @@ class Batch:
                 self.trg_mask = self.trg_mask.cuda()
 
 
-def run_epoch(data_iter, model, loss_compute, print_every=50):
+def run_epoch(data_iter, model, optim, print_every=50):
     """Standard Training and Logging Function"""
 
     start = time.time()
@@ -315,10 +315,11 @@ def run_epoch(data_iter, model, loss_compute, print_every=50):
     total_loss = 0
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
-        out, _, pre_output = model.forward(
-            batch.src, batch.trg, batch.src_mask, batch.trg_mask,
-            batch.src_lengths, batch.trg_lengths)
-        loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
+        loss, o = model.forward(batch.src, batch.trg, batch.src_mask,
+                                batch.trg_mask, batch.src_lengths,
+                                batch.trg_lengths)
+        out, _, pre_output = o
+        loss = SimpleLossCompute(model.module.generator, criterion, optim)
         total_loss += loss
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens
@@ -329,7 +330,7 @@ def run_epoch(data_iter, model, loss_compute, print_every=50):
                   (i, loss / batch.nseqs, print_tokens / elapsed))
             start = time.time()
             print_tokens = 0
-    del out, _, loss, pre_output
+    del out, _, loss, pre_output, o
     gc.clollect()
     num_gpus = torch.cuda.device_count()
     for gpu_id in range(num_gpus):
@@ -362,15 +363,13 @@ def data_gen(num_words=11,
 class SimpleLossCompute:
     """A simple loss compute and train function."""
 
-    def __init__(self, generator, criterion, opt=None):
+    def __init__(self, generator, loss, opt=None):
+        self.loss = loss
         self.generator = generator
-        self.criterion = criterion
         self.opt = opt
 
     def __call__(self, x, y, norm):
         x = self.generator(x)
-        loss = self.criterion(x.contiguous().view(-1, x.size(-1)),
-                              y.contiguous().view(-1))
         loss = loss / norm
 
         if self.opt is not None:
@@ -604,7 +603,6 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
     """Train a model on IWSLT"""
 
     # optionally add label smoothing; see the Annotated Transformer
-    criterion = nn.NLLLoss(reduction="sum", ignore_index=PAD_INDEX)
     optim = torch.optim.Adam(model.parameters(), lr=lr)
 
     dev_perplexities = []
@@ -616,7 +614,7 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         train_perplexity = run_epoch(
             (rebatch(PAD_INDEX, b) for b in train_iter),
             model,
-            SimpleLossCompute(model.module.generator, criterion, optim),
+            optim,
             print_every=print_every)
 
         # model.eval()
@@ -644,10 +642,18 @@ model = make_model(
     num_layers=2,
     dropout=0.1)
 
-# class FullModel(nn.Module):
-#     def __init__(self, model, loss):
 
-model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+class FullModel(nn.Module):
+    def __init__(self, model):
+        self.model = model
+        self.loss = nn.NLLLoss(reduction="sum", ignore_index=PAD_INDEX)
+
+    def forward(self, inputs, targets):
+        outputs = self.model(inputs)
+        loss = self.loss(outputs, targets)
+
+
+model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3])
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
 
