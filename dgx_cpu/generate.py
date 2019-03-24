@@ -585,7 +585,7 @@ def print_data_info(train_data, valid_data, src_field, trg_field):
     print("Number of English words (types):", len(trg_field.vocab), "\n")
 
 
-# print_data_info(train_data, valid_data, SRC, TRG)
+print_data_info(train_data, valid_data, SRC, TRG)
 
 train_iter = data.BucketIterator(
     train_data,
