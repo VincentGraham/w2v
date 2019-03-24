@@ -330,6 +330,11 @@ def run_epoch(data_iter, model, loss_compute, print_every=50):
             start = time.time()
             print_tokens = 0
 
+    num_gpus = torch.cuda.device_count()
+        for gpu_id in range(num_gpus):
+            torch.cuda.set_device(gpu_id)
+            torch.cuda.empty_cache()
+
     return math.exp(total_loss / float(total_tokens))
 
 
@@ -587,7 +592,7 @@ train_iter = data.BucketIterator(
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
     repeat=False,
-    device=DEVICE)
+)
 
 
 def rebatch(pad_idx, batch):
@@ -639,7 +644,7 @@ model = make_model(
     num_layers=2,
     dropout=0.1)
 
-model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+model = nn.DataParallel(model)
 # model.to(DEVICE)
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
