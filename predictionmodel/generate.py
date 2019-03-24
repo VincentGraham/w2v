@@ -528,7 +528,7 @@ if True:
         init_token=SOS_TOKEN,
         eos_token=EOS_TOKEN)
 
-    MAX_LEN = 60  # NOTE: we filter out a lot of sentences for speed
+    MAX_LEN = 25  # NOTE: we filter out a lot of sentences for speed
 
     data_fields = [('sentence', SRC), ('article', TRG)]
 
@@ -537,11 +537,14 @@ if True:
         train='test.csv',
         validation='test.csv',
         format="csv",
-        fields=data_fields)
+        fields=data_fields,
+        filter_pred=
+        lambda x: len(vars(x)['sentence']) <= MAX_LEN and len(vars(x)['article']) <= 50
+    )
     MIN_FREQ = 2  # NOTE: we limit the vocabulary to frequent words for speed
     VOCAB = vocab.Vectors('model.txt', cache='/mounted/data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
-    TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
+    TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ * 2)
 
     PAD_INDEX = TRG.vocab.stoi[PAD_TOKEN]
 
@@ -604,7 +607,7 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
 
     # optionally add label smoothing; see the Annotated Transformer
     optim = torch.optim.Adam(model.parameters(), lr=lr)
-
+    model.cuda()
     dev_perplexities = []
 
     for epoch in range(num_epochs):
