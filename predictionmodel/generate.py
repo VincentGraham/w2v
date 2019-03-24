@@ -647,7 +647,7 @@ model = make_model(
 # class FullModel(nn.Module):
 #     def __init__(self, model, loss):
 
-model = nn.DataParallel(model).cuda()
+model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
 
