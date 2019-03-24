@@ -10,6 +10,7 @@ from rearrange import check_case, tokenize
 import logging
 import gc
 import io
+import os
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -329,9 +330,10 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
         for obj in gc.get_objects():
-            if (not isinstance(obj, io.IOBase) and torch.is_tensor(obj)) or (
-                    not isinstance(obj, io.IOBase) and hasattr(obj, 'data')
-                    and torch.is_tensor(obj.data)):
+            if (not isinstance(obj, io.IOBase) not os.path.isdir(str(obj))and torch.is_tensor(obj)) or (
+                    not isinstance(obj, io.IOBase)
+                    and hasattr(obj, 'data')
+                    and torch.is_tensor(obj.data) and os.path.isdir(str(obj.data))):
                 # print(type(obj), obj.size())
                 del obj
                 gc.collect()
@@ -702,9 +704,9 @@ def train_model():
         hidden_size=256,
         num_layers=3,
         dropout=0.1)
-    dev_perplexities = train(model, print_every=10, num_epochs=1)
+    dev_perplexities = train(model, print_every=1, num_epochs=1)
 
-    # torch.save(model.state_dict(), 'data/torch/model')
+    torch.save(model.state_dict(), 'data/torch/model')
     print("saved model")
 
 
@@ -717,8 +719,8 @@ def rebatch_pred(pad_idx, batch):
 
 def load_model():
     model = make_model(
-        len(SRC.vocab),
-        len(TRG.vocab),
+        len(vocab),
+        len(vocab),
         emb_size=500,
         hidden_size=256,
         num_layers=1,
