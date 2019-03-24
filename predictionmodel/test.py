@@ -369,7 +369,7 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
         batch = rebatch(PAD_INDEX, batch)
-        out, _, pre_output, output, loss = model.forward(
+        out, _, pre_output, output, loss = model.module.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
             batch.src_lengths, batch.trg_lengths, batch.trg_y)
         # loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
@@ -496,8 +496,8 @@ def greedy_decode(model,
     """Greedily decode a sentence."""
 
     with torch.no_grad():
-        encoder_hidden, encoder_final = model.encode(src, src_mask,
-                                                     src_lengths)
+        encoder_hidden, encoder_final = module.encode(src, src_mask,
+                                                      src_lengths)
         prev_y = torch.ones(1, 1).fill_(sos_index).type_as(src)
         trg_mask = torch.ones_like(prev_y)
 
@@ -507,13 +507,14 @@ def greedy_decode(model,
 
     for i in range(max_len):
         with torch.no_grad():
-            out, hidden, pre_output = model.decode(encoder_hidden,
-                                                   encoder_final, src_mask,
-                                                   prev_y, trg_mask, hidden)
+            out, hidden, pre_output = model.module.decode(
+                encoder_hidden, encoder_final, src_mask, prev_y, trg_mask,
+                hidden)
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-            prob, _ = model.generator(pre_output[:, -1], pre_output[:, -1])
+            prob, _ = model.module.generator(pre_output[:, -1],
+                                             pre_output[:, -1])
 
         _, next_word = torch.max(prob, dim=1)
         next_word = next_word.data.item()
@@ -703,7 +704,7 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         train_perplexity = run_epoch(
             train_iter,
             model,
-            SimpleLossCompute(model.generator, criterion, optim),
+            SimpleLossCompute(model.module.generator, criterion, optim),
             print_every=print_every,
             optim=optim)
 
@@ -746,6 +747,7 @@ def train_model():
         dropout=0.1)
     model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3]).cuda()
     dev_perplexities = train(model, print_every=1, num_epochs=1)
+    torch.save(model.module.state_dict(), '/mounted/data/torch/model')
 
     torch.save(model.state_dict(), '/mounted/data/torch/parallel_model')
     torch.save(model.module.state_dict(), '/mounted/data/torch/model')
