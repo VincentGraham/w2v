@@ -8,8 +8,7 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import numpy as np
 from rearrange import check_case, tokenize
 import gc
-
-USE_CUDA = torch.cuda.is_available()
+USE_CUDA = False
 DEVICE = torch.device('cuda:3')  # or set to 'cpu'
 DEVICE1 = torch.device('cuda:1')
 DEVICE2 = torch.device('cuda:2')
@@ -267,7 +266,7 @@ def make_model(src_vocab,
         nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors)),
         Generator(hidden_size, tgt_vocab))
 
-    return model.cuda() if USE_CUDA else model
+    return model
 
 
 class Batch:
@@ -298,7 +297,7 @@ class Batch:
             self.trg_mask = (self.trg_y != pad_index)
             self.ntokens = (self.trg_y != pad_index).data.sum().item()
 
-        if USE_CUDA:
+        if True:
             self.src = self.src.cuda()
             self.src_mask = self.src_mask.cuda()
 
@@ -594,6 +593,7 @@ train_iter = data.BucketIterator(
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
     repeat=False,
+    device=DEVICE
 )
 
 
@@ -646,8 +646,11 @@ model = make_model(
     num_layers=2,
     dropout=0.1)
 
+class FullModel(nn.Module):
+    def __init__(self, model, loss):
+
 model = nn.DataParallel(model)
-# model.to(DEVICE)
+
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
 
