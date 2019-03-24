@@ -677,8 +677,8 @@ def load_model():
     return model
 
 
-if not FAST:
-    model = load_model()
+# if not FAST:
+#     model = load_model()
 
 train_model()
 

@@ -704,3 +704,7 @@ def load_dataparallel_model():
     model.load_state_dict(new_state_dict)
     model.eval()
     return model
+
+
+    class CustomDataField(object):
+        def __init__(self, sentence, article)
