@@ -331,9 +331,9 @@ def run_epoch(data_iter, model, loss_compute, print_every=50):
             print_tokens = 0
 
     num_gpus = torch.cuda.device_count()
-        for gpu_id in range(num_gpus):
-            torch.cuda.set_device(gpu_id)
-            torch.cuda.empty_cache()
+    for gpu_id in range(num_gpus):
+        torch.cuda.set_device(gpu_id)
+        torch.cuda.empty_cache()
 
     return math.exp(total_loss / float(total_tokens))
 
