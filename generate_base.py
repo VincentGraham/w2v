@@ -391,7 +391,8 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         criterion = AdaptiveLoss([2000, 10000])
 
         x = pre_output.view(-1, pre_output.size()[2])
-        y = batch.trg_y.view(batch.trg_y.size()[0] * batch.trg_y.size()[1])
+        y = batch.trg_y.contiguous.view(
+            batch.trg_y.size()[0] * batch.trg_y.size()[1])
 
         output = m(x, y)
         loss = criterion(output, y)
