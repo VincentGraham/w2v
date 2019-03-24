@@ -330,12 +330,6 @@ def run_epoch(data_iter, model, optim, print_every=50):
                   (i, loss / batch.nseqs, print_tokens / elapsed))
             start = time.time()
             print_tokens = 0
-    del out, _, loss, pre_output, o
-    gc.clollect()
-    num_gpus = torch.cuda.device_count()
-    for gpu_id in range(num_gpus):
-        torch.cuda.set_device(gpu_id)
-        torch.cuda.empty_cache()
 
     return math.exp(total_loss / float(total_tokens))
 
@@ -590,7 +584,7 @@ print_data_info(train_data, valid_data, SRC, TRG)
 
 train_iter = data.BucketIterator(
     train_data,
-    batch_size=2,
+    batch_size=64,
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
