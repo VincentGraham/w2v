@@ -159,13 +159,22 @@ class Decoder(nn.Module):
 
         # update rnn hidden state
         rnn_input = torch.cat([prev_embed, context], dim=2)
-        output, hidden = self.rnn(rnn_input, hidden)
 
+        output, hidden = self.rnn(rnn_input, hidden)
+        del rnn_input
         pre_output = torch.cat([prev_embed, output, context], dim=2)
+        del context
         pre_output = self.dropout_layer(pre_output)
         pre_output = self.pre_output_layer(pre_output)
 
         return output, hidden, pre_output
+
+    def repackage_hidden(h):
+        """Wraps hidden states in new Variables, to detach them from their history."""
+        if type(h) == Variable:
+            return Variable(h.data, requires_grad=True)
+        else:
+            return tuple(repackage_hidden(v) for v in h)
 
     def forward(self,
                 trg_embed,
@@ -184,6 +193,8 @@ class Decoder(nn.Module):
         # initialize decoder hidden state
         if hidden is None:
             hidden = self.init_hidden(encoder_final)
+        else:
+            hidden = repackage_hidden(hidden)
 
         # pre-compute projected encoder hidden states
         # (the "keys" for the attention mechanism)
@@ -242,6 +253,7 @@ class BahdanauAttention(nn.Module):
 
         # Calculate scores.
         scores = self.energy_layer(torch.tanh(query + proj_key))
+        del query
         scores = scores.squeeze(2).unsqueeze(1)
 
         # Mask out invalid positions.
@@ -250,6 +262,7 @@ class BahdanauAttention(nn.Module):
 
         # Turn scores to probabilities.
         alphas = F.softmax(scores, dim=-1)
+        del scores
         self.alphas = alphas
 
         # The context vector is the weighted sum of the values.
@@ -330,10 +343,11 @@ def run_epoch(data_iter, model, loss_compute, print_every=50, optim=None):
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
         for obj in gc.get_objects():
-            if (not isinstance(obj, io.IOBase) not os.path.isdir(str(obj))and torch.is_tensor(obj)) or (
-                    not isinstance(obj, io.IOBase)
-                    and hasattr(obj, 'data')
-                    and torch.is_tensor(obj.data) and os.path.isdir(str(obj.data))):
+            if (not os.path.isdir(str(obj) and not isinstance(obj, io.IOBase))
+                    and torch.is_tensor(obj)) or (os.path.isdir(
+                        str(obj.data) and not isinstance(obj, io.IOBase)
+                        and hasattr(obj, 'data')
+                        and torch.is_tensor(obj.data))):
                 # print(type(obj), obj.size())
                 del obj
                 gc.collect()
