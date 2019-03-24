@@ -128,7 +128,7 @@ if __name__ == '__main__':
 
     model = gensim.models.Word2Vec(
         sentences,
-        size=300,
+        size=256,
         window=15,
         min_count=4,
         workers=mp.cpu_count() / 2,
