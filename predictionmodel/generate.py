@@ -15,9 +15,6 @@ DEVICE1 = torch.device('cuda:1')
 DEVICE2 = torch.device('cuda:2')
 DEVICE3 = torch.device('cuda:0')
 
-vocab = load_word2vec_vocab()
-pret = load_word2vec_model()
-
 
 class EncoderDecoder(nn.Module):
     def __init__(self, encoder, decoder, src_embed, trg_embed, generator):
@@ -258,10 +255,12 @@ def make_model(src_vocab,
     "Helper: Construct a model from hyperparameters."
 
     attention = BahdanauAttention(hidden_size)
+
     embedding1 = nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors))
     embedding2 = nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors))
     embedding1.weight.requires_grad = False
     embedding2.weight.requires_grad = False
+
     model = EncoderDecoder(
         Encoder(emb_size, hidden_size, num_layers=num_layers, dropout=dropout),
         Decoder(
@@ -351,7 +350,7 @@ def data_gen(num_words=11,
         data = torch.from_numpy(
             np.random.randint(1, num_words, size=(batch_size, length)))
         data[:, 0] = sos_index
-        data = data.cuda() if USE_CUDA else data
+        # data = data.cuda() if USE_CUDA else data
         src = data[:, 1:]
         trg = data
         src_lengths = [length - 1] * batch_size
@@ -664,6 +663,7 @@ model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3]).cuda()
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
 
+torch.save(model.state_dict(), '/mounted/data/torch/parallel_model')
 torch.save(model.module.state_dict(), '/mounted/data/torch/model')
 
 
