@@ -391,7 +391,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         criterion = AdaptiveLoss([2000, 10000])
 
         x = pre_output.view(-1, pre_output.size()[2])
-        y = batch.trg_y.contiguous.view(
+        y = batch.trg_y.contiguous().view(
             batch.trg_y.size()[0] * batch.trg_y.size()[1])
 
         output = m(x, y)
@@ -401,7 +401,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         loss.backward()
         optim.step()
         optim.zero_grad()
-        total_loss += loss.data.item * batch.nseqs
+        total_loss += loss.data.item
         del loss
         del x
         del y
