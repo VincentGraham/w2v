@@ -124,11 +124,11 @@ def get_data(data):
     '''get the (in, out) data from a csv object'''
     clean_words = []
     for summary in data.sentence:
-        clean_words.append(clean_text(summary, remove_stopwords=False))
+        clean_words.append(clean_word(summary, remove_stopwords=False))
 
     clean_definitions = []
     for text in data.article:
-        clean_definitions.append(clean_text(text))
+        clean_definitions.append(clean_word(text))
 
     return clean_words, clean_definitions
 

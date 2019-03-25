@@ -323,17 +323,19 @@ def decoding_layer(dec_embed_input, embeddings, enc_output, enc_state,
         normalize=False,
         name='BahdanauAttention')
 
-    dec_cell = tf.contrib.seq2seq.DynamicAttentionWrapper(
-        dec_cell, attn_mech, rnn_size)
+    dec_cell = tf.contrib.seq2seq.AttentionWrapper(dec_cell, attn_mech,
+                                                   rnn_size)
+    dec_cell.zero_state(
+        batch_size=batch_size, dtype=tf.float32).clone(cell_state=enc_state)
 
     initial_state = tf.contrib.seq2seq.DynamicAttentionWrapperState(
         enc_state[0], _zero_state_tensors(rnn_size, batch_size, tf.float32))
     with tf.variable_scope("decode"):
-        training_logits = training_decoding_layer(
+        training_logits, _, __ = training_decoding_layer(
             dec_embed_input, definition_length, dec_cell, initial_state,
             output_layer, vocab_size, max_definition_length)
     with tf.variable_scope("decode", reuse=True):
-        inference_logits = inference_decoding_layer(
+        inference_logits, _, __ = inference_decoding_layer(
             embeddings, vocab_to_int['<SOS>'], vocab_to_int['<EOS>'], dec_cell,
             initial_state, output_layer, max_definition_length, batch_size)
 
