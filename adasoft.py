@@ -5,10 +5,9 @@ from torch.nn.modules.loss import _Loss
 
 
 class FairseqCriterion(_Loss):
-    def __init__(self, args, task):
+    def __init__(self, pad_idx):
         super().__init__()
-        self.args = args
-        self.padding_idx = task.target_dictionary.pad()
+        self.padding_idx = pad_idx
 
     @staticmethod
     def add_args(parser):
@@ -39,24 +38,22 @@ class FacebookAdaptiveLoss(FairseqCriterion):
     graphical processing units (GPU), described in the paper "Efficient softmax approximation for GPUs"
     (http://arxiv.org/abs/1609.04309)."""
 
-    def __init__(self, args, task):
-        super().__init__(args, task)
+    def __init__(self, task):
+        super().__init__(task)
 
-    def forward(self, model, sample, reduce=True):
+    def forward(self, asm, input, target, reduce=True):
         """Compute the loss for the given sample.
-        Returns a tuple with three elements:
+        Returns a tuple with two elements:
         1) the loss
         2) the sample size, which is used as the denominator for the gradient
-        3) logging outputs to display while training
         """
 
-        assert hasattr(
-            model.decoder,
-            'adaptive_softmax') and model.decoder.adaptive_softmax is not None
-        adaptive_softmax = model.decoder.adaptive_softmax
+        adaptive_softmax = asm
 
-        net_output = model(**sample['net_input'])
-        target = model.get_targets(sample, net_output).view(-1)
+        # net_output = model(**sample['net_input'])
+        # target = model.get_targets(sample, net_output).view(-1)
+        net_output = input
+        target = target.contiguous().view(-1)
 
         bsz = target.size(0)
 
@@ -76,8 +73,7 @@ class FacebookAdaptiveLoss(FairseqCriterion):
                     ignore_index=self.padding_idx,
                     reduce=reduce)
 
-        sample_size = sample['target'].size(
-            0) if self.args.sentence_avg else sample['ntokens']
+        sample_size = target.size(0)
 
         return loss, sample_size
 
@@ -176,7 +172,7 @@ class FacebookAdaptiveSoftmax(nn.Module):
             2 lists: output for each cutoff section and new targets by cut off
         """
 
-        input = input.contiguous().view(-1, input.size(-1))
+        # input = input.contiguous().view(-1, input.size(-1))
         input = F.dropout(input, p=self.dropout, training=self.training)
 
         new_target, target_idxs = self.adapt_target(target)
@@ -184,6 +180,7 @@ class FacebookAdaptiveSoftmax(nn.Module):
 
         for i in range(len(target_idxs)):
             if target_idxs[i] is not None:
+                print(target_idxs[i])
                 output.append(self.tail[i](input.index_select(
                     0, target_idxs[i])))
             else:

@@ -391,16 +391,16 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         # m = AdaptiveSoftmax(256, [2000, 10000])
         m = FacebookAdaptiveSoftmax(
             len(vocab), 256, [2000, 10000], dropout=0.1)
-        criterion = FacebookAdaptiveLoss([2000, 10000])
+        criterion = FacebookAdaptiveLoss(PAD_INDEX)
 
-        # x = pre_output.view(-1, pre_output.size()[2])
-        # y = batch.trg_y.contiguous().view(
-        #     batch.trg_y.size()[0] * batch.trg_y.size()[1])
+        x = pre_output.view(-1, pre_output.size()[1])
+        y = batch.trg_y.contiguous().view(
+            batch.trg_y.size()[0] * batch.trg_y.size()[1])
 
-        # print(x.size(), y.size(), batch.trg_y.size())
+        print(x.size(), y.size(), batch.trg_y.size())
 
-        output, new_target = m(pre_output, batch.trg_y)
-        loss = criterion(output, batch.trg_y)
+        output, new_target = m(pre_output, y)
+        loss = criterion(m, output, y)
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens
         loss.backward()
