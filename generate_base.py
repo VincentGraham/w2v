@@ -12,7 +12,9 @@ import gc
 import io
 import os
 import psutil
-from adasoft import AdaptiveLoss, AdaptiveSoftmax
+from adasoft import AdaptiveLoss, AdaptiveSoftmax, FacebookAdaptiveSoftmax
+
+from torch.nn.modules.loss import _Loss
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -387,17 +389,19 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
             batch.src_lengths, batch.trg_lengths, batch.trg_y)
         # loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
-        m = AdaptiveSoftmax(256, [2000, 10000])
+        # m = AdaptiveSoftmax(256, [2000, 10000])
+        m = FacebookAdaptiveSoftmax(
+            len(vocab), 256, [2000, 10000], dropout=0.1)
         criterion = AdaptiveLoss([2000, 10000])
 
-        x = pre_output.view(-1, pre_output.size()[2])
-        y = batch.trg_y.contiguous().view(
-            batch.trg_y.size()[0] * batch.trg_y.size()[1])
+        # x = pre_output.view(-1, pre_output.size()[2])
+        # y = batch.trg_y.contiguous().view(
+        #     batch.trg_y.size()[0] * batch.trg_y.size()[1])
 
-        print(x.size(), y.size(), batch.trg_y.size())
+        # print(x.size(), y.size(), batch.trg_y.size())
 
-        output = m(pre_output, batch.trg_y)
-        loss = criterion(output, y)
+        output, new_target = m(pre_output, batch.trg_y)
+        loss = criterion(output, batch.trg_y)
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens
         loss.backward()
@@ -531,7 +535,7 @@ def greedy_decode(model,
     output = []
     attention_scores = []
     hidden = None
-    m = AdaptiveSoftmax(256, [2000, 10000])
+    m = FacebookAdaptiveSoftmax(src_vocab, 256, [2000, 10000], dropout=0.1)
     for i in range(max_len):
         with torch.no_grad():
             out, hidden, pre_output = model.decode(encoder_hidden,
@@ -540,8 +544,8 @@ def greedy_decode(model,
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-            prob = m(pre_output[:, -1], pre_output[:, -1])
-            log_prob = m.log_prob(prob)
+            prob = m(pre_output[:, -1], pre_output[:, -1])  #FIXME
+            log_prob = m.get_log_prob(prob)
 
         _, next_word = torch.max(prob, dim=1)
         next_word = next_word.data.item()
