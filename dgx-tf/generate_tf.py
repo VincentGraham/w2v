@@ -265,7 +265,7 @@ def training_decoding_layer(dec_embed_input, definition_length, dec_cell,
     training_decoder = tf.contrib.seq2seq.BasicDecoder(
         dec_cell, training_helper, initial_state, output_layer)
 
-    training_logits, _ = tf.contrib.seq2seq.dynamic_decode(
+    training_logits, _, __ = tf.contrib.seq2seq.dynamic_decode(
         training_decoder,
         output_time_major=False,
         impute_finished=True,
@@ -288,7 +288,7 @@ def inference_decoding_layer(embeddings, start_token, end_token, dec_cell,
     inference_decoder = tf.contrib.seq2seq.BasicDecoder(
         dec_cell, inference_helper, initial_state, output_layer)
 
-    inference_logits, _ = tf.contrib.seq2seq.dynamic_decode(
+    inference_logits, _, __ = tf.contrib.seq2seq.dynamic_decode(
         inference_decoder,
         output_time_major=False,
         impute_finished=True,
@@ -331,11 +331,11 @@ def decoding_layer(dec_embed_input, embeddings, enc_output, enc_state,
     initial_state = tf.contrib.seq2seq.DynamicAttentionWrapperState(
         enc_state[0], _zero_state_tensors(rnn_size, batch_size, tf.float32))
     with tf.variable_scope("decode"):
-        training_logits, _, __ = training_decoding_layer(
+        training_logits = training_decoding_layer(
             dec_embed_input, definition_length, dec_cell, initial_state,
             output_layer, vocab_size, max_definition_length)
     with tf.variable_scope("decode", reuse=True):
-        inference_logits, _, __ = inference_decoding_layer(
+        inference_logits = inference_decoding_layer(
             embeddings, vocab_to_int['<SOS>'], vocab_to_int['<EOS>'], dec_cell,
             initial_state, output_layer, max_definition_length, batch_size)
 
