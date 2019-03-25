@@ -12,9 +12,8 @@ import gc
 import io
 import os
 import psutil
-from adasoft import AdaptiveLoss, AdaptiveSoftmax, FacebookAdaptiveSoftmax
+from adasoft import AdaptiveLoss, AdaptiveSoftmax, FacebookAdaptiveSoftmax, FacebookAdaptiveLoss
 
-from torch.nn.modules.loss import _Loss
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -392,7 +391,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         # m = AdaptiveSoftmax(256, [2000, 10000])
         m = FacebookAdaptiveSoftmax(
             len(vocab), 256, [2000, 10000], dropout=0.1)
-        criterion = AdaptiveLoss([2000, 10000])
+        criterion = FacebookAdaptiveLoss([2000, 10000])
 
         # x = pre_output.view(-1, pre_output.size()[2])
         # y = batch.trg_y.contiguous().view(

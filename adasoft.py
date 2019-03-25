@@ -34,7 +34,7 @@ class FairseqCriterion(_Loss):
         return sum(sample_sizes)
 
 
-class AdaptiveLoss(FairseqCriterion):
+class FacebookAdaptiveLoss(FairseqCriterion):
     """This is an implementation of the loss function accompanying the adaptive softmax approximation for
     graphical processing units (GPU), described in the paper "Efficient softmax approximation for GPUs"
     (http://arxiv.org/abs/1609.04309)."""
