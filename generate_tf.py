@@ -74,8 +74,12 @@ for code in codes:
 
 # Dictionary to convert integers to words
 int_to_vocab = {}
+i = 0
 for word, value in vocab_to_int.items():
     int_to_vocab[value] = word
+    if i == 1:
+        print(int_to_vocab)
+    i += 1
 
 usage_ratio = round(len(vocab_to_int) / len(word_counts), 4) * 100
 
@@ -190,8 +194,6 @@ for length in range(min(lengths_words.counts), max_word_length):
             sorted_words.append(int_words[count])
 
 # Compare lengths to ensure they match
-print(len(sorted_definitions))
-print(len(sorted_words))
 
 # Tensorflow Code:
 
@@ -249,7 +251,7 @@ def encoding_layer(rnn_size, sequence_length, num_layers, rnn_inputs,
     # Join outputs since we are using a bidirectional RNN
     enc_output = tf.concat(enc_output, 2)
 
-    return enc_output, enc_state
+    return enc_output, enc_state[0]
 
 
 def training_decoding_layer(dec_embed_input, definition_length, dec_cell,
@@ -328,14 +330,14 @@ def decoding_layer(dec_embed_input, embeddings, enc_output, enc_state,
     dec_cell.zero_state(
         batch_size=batch_size, dtype=tf.float32).clone(cell_state=enc_state)
 
-    initial_state = tf.contrib.seq2seq.AttentionWrapperState(
-        enc_state[0], _zero_state_tensors(rnn_size, batch_size, tf.float32))
+    initial_state = dec_cell.zero_state(
+        batch_size=batch_size, dtype=tf.float32).clone(cell_state=enc_state)
     with tf.variable_scope("decode"):
-        training_logits = training_decoding_layer(
+        training_logits, _ = training_decoding_layer(
             dec_embed_input, definition_length, dec_cell, initial_state,
             output_layer, vocab_size, max_definition_length)
     with tf.variable_scope("decode", reuse=True):
-        inference_logits = inference_decoding_layer(
+        inference_logits, _ = inference_decoding_layer(
             embeddings, vocab_to_int['<SOS>'], vocab_to_int['<EOS>'], dec_cell,
             initial_state, output_layer, max_definition_length, batch_size)
 
@@ -381,6 +383,7 @@ def get_batches(definitions, words, batch_size):
         definitions_batch = definitions[start_i:start_i + batch_size]
         words_batch = words[start_i:start_i + batch_size]
         pad_definitions_batch = np.array(pad_sentence_batch(definitions_batch))
+        # print(pad_definitions_batch)
         pad_words_batch = np.array(pad_sentence_batch(words_batch))
 
         # Need the lengths for the _lengths parameters
@@ -395,7 +398,7 @@ def get_batches(definitions, words, batch_size):
         yield pad_definitions_batch, pad_words_batch, pad_definitions_lengths, pad_words_lengths
 
 
-epochs = 100
+epochs = 25
 batch_size = 64
 rnn_size = 256
 num_layers = 2
@@ -417,9 +420,9 @@ with train_graph.as_default():
         len(vocab_to_int) + 1, rnn_size, num_layers, vocab_to_int, batch_size)
 
     # Create tensors for the training logits and inference logits
-    training_logits = tf.identity(training_logits.rnn_output, 'logits')
-    inference_logits = tf.identity(
-        inference_logits.sample_id, name='predictions')
+    print(training_logits.__dict__, inference_logits.__dict__)
+    training_logits = tf.identity(training_logits, 'logits')
+    inference_logits = tf.identity(inference_logits, name='predictions')
 
     # Create the weights for sequence_loss
     masks = tf.sequence_mask(
@@ -443,12 +446,8 @@ with train_graph.as_default():
         train_op = optimizer.apply_gradients(capped_gradients)
 print("Graph is built.")
 
-start = 200000
-end = start + 50000
-sorted_definitions_short = sorted_definitions[start:end]
-sorted_words_short = sorted_words[start:end]
-print("The shortest word length:", len(sorted_words_short[0]))
-print("The longest word length:", len(sorted_words_short[-1]))
+sorted_definitions_short = sorted_definitions
+sorted_words_short = sorted_words
 
 learning_rate_decay = 0.95
 min_learning_rate = 0.0005
@@ -468,8 +467,8 @@ with tf.Session(graph=train_graph) as sess:
     sess.run(tf.global_variables_initializer())
 
     # If we want to continue training a previous session
-    #loader = tf.train.import_meta_graph("./" + checkpoint + '.meta')
-    #loader.restore(sess, checkpoint)
+    # loader = tf.train.import_meta_graph("./" + checkpoint + '.meta')
+    # loader.restore(sess, checkpoint)
 
     for epoch_i in range(1, epochs + 1):
         update_loss = 0
@@ -504,10 +503,7 @@ with tf.Session(graph=train_graph) as sess:
                 batch_loss = 0
 
             if batch_i % update_check == 0 and batch_i > 0:
-                print("Average loss for this update:",
-                      round(update_loss / update_check, 3))
                 definition_update_loss.append(update_loss)
-
                 # If the update loss is at a new minimum, save the model
                 if update_loss <= min(definition_update_loss):
                     print('New Record!')
@@ -560,24 +556,46 @@ with tf.Session(graph=loaded_graph) as sess:
     keep_prob = loaded_graph.get_tensor_by_name('keep_prob:0')
 
     #Multiply by batch_size to match the model's input parameters
-    answer_logits = sess.run(
-        logits, {
-            input_data: [word] * batch_size,
-            definition_length: [np.random.randint(5, 8)],
-            word_length: [len(word)] * batch_size,
-            keep_prob: 1.0
-        })[0]
+    while True:
+        text_in = input("Next?")
 
-# Remove the padding from the tweet
-pad = vocab_to_int["<PAD>"]
+        random = np.random.randint(0, len(cleaned_words))
+        input_sentence = cleaned_words[random]
+        print(input_sentence)
+        word = word_to_seq(cleaned_words[random])
 
-print('Original word:', input_sentence)
+        answer_logits = sess.run(
+            logits, {
+                input_data: [word] * batch_size,
+                definition_length: [np.random.randint(5, 8)],
+                word_length: [len(word)] * batch_size,
+                keep_prob: 1.0
+            })[0][0]
+        print([int(np.average(i)) for i in answer_logits])
 
-print('\nword')
-print('  Word Ids:    {}'.format([i for i in word]))
-print('  Input Words: {}'.format(" ".join([int_to_vocab[i] for i in word])))
+        # print(answer_logits)
+        answer_logits = answer_logits  # a list of lists
+        pad = vocab_to_int["<PAD>"]
 
-print('\ndefinition')
-print('  Word Ids:       {}'.format([i for i in answer_logits if i != pad]))
-print('  Response Words: {}'.format(" ".join(
-    [int_to_vocab[i] for i in answer_logits if i != pad])))
+        print('Original word:', text_in)
+
+        print('\nword')
+        print('  Word Ids:    {}'.format([i for i in word]))
+        print('  Input Words: {}'.format(" ".join(
+            [int_to_vocab[i] for i in word])))
+
+        print('\ndefinition')
+        print('  Word Ids:       {}'.format([
+            abs(int(np.average(i))) for i in answer_logits
+            if abs(int(np.average(i))) != pad
+        ]))
+        # print('  Response Words: {}'.format(" ".join([
+        #     int_to_vocab[abs(int(np.average(i)))] for i in answer_logits
+        #     if abs(int(np.average(i))) != pad
+        # ])))
+        print('  Response Words: {}'.format(" ".join(
+            [int_to_vocab[int(i)] for i in answer_logits if int(i) != pad])))
+
+# sleep per day or pain per day
+
+# something per day but day of week matters (alcohol, exerci
