@@ -41,9 +41,7 @@ class Batch:
     """
 
     def __init__(self, src, trg, pad_index=0):
-
         src, src_lengths = src
-
         self.src = src
         self.src_lengths = src_lengths
         self.src_mask = (src != pad_index).unsqueeze(-2)
@@ -59,6 +57,8 @@ class Batch:
             trg, trg_lengths = trg
             self.trg = trg[:, :-1]
             self.trg_lengths = trg_lengths
+            self.trg_raw = self.trg.tolist()
+            self.trg_lengths_raw = self.trg_lengths.tolist()
             self.trg_y = trg[:, 1:]
             self.trg_mask = (self.trg_y != pad_index)
             self.ntokens = (self.trg_y != pad_index).data.sum().item()
@@ -73,42 +73,62 @@ class Batch:
                 self.trg_mask = self.trg_mask.cuda()
 
 
-class SimpleLossCompute:
-    """A simple loss compute and train function."""
-
-    def __init__(self, generator, loss, opt=None):
-        self.loss = loss
-        self.generator = generator
-        self.opt = opt
-
-    def __call__(self, x, y, norm):
-        x = self.generator(x)
-        loss = loss / norm
-
-        if self.opt is not None:
-            loss.backward()
-            self.opt.step()
-            self.opt.zero_grad()
-
-        return loss.data.item() * norm
-
-
-def run_epoch(data_iter, model, optim, print_every=50):
+def run_epoch(data_iter, model, print_every=50, optim=None):
     """Standard Training and Logging Function"""
-    # TODO add on the fly tensorizing of data instead of initial
+
     start = time.time()
     total_tokens = 0
     total_loss = 0
     print_tokens = 0
     for i, batch in enumerate(data_iter, 1):
-        loss, o = model.forward(batch.src, batch.trg, batch.src_mask,
-                                batch.trg_mask, batch.src_lengths,
-                                batch.trg_lengths)
-        out, _, pre_output = o
-        loss = SimpleLossCompute(model.module.generator, criterion, optim)
-        total_loss += float(loss)
+        # for obj in gc.get_objects():
+        #     if (not os.path.isdir(str(obj) and not isinstance(obj, io.IOBase))
+        #             and torch.is_tensor(obj)) or (os.path.isdir(
+        #                 str(obj.data) and not isinstance(obj, io.IOBase)
+        #                 and hasattr(obj, 'data')
+        #                 and torch.is_tensor(obj.data))):
+        #         # print(type(obj), obj.size())
+        #         del obj
+        #         gc.collect()
+        batch = rebatch(PAD_INDEX, batch)
+        out, _, pre_output, = model.module.forward(
+            batch.src, batch.trg, batch.src_mask, batch.trg_mask,
+            batch.src_lengths, batch.trg_lengths, batch.trg_y)
+
+        # loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
+        # m = AdaptiveSoftmax(256, [2000, 10000])
+        # m = FacebookAdaptiveSoftmax(
+        #     len(vocab), 256, [2000, 10000], dropout=0.1)
+        # criterion = FacebookAdaptiveLoss(PAD_INDEX)
+        # criterion = nn.MSELoss(reduction="sum", ignore_index=0)
+        criterion = nn.MSELoss()
+
+        # x = pre_output.view(-1, pre_output.size()[1])
+        # y = batch.trg_y.contiguous().view(
+        #     batch.trg_y.size()[0] * batch.trg_y.size()[1])
+
+        # print(x.size(), y.size(), batch.trg_y.size())
+
+        def fix_target(tens):
+            out = []
+            for list in tens:
+                words = []
+                for word_idx in list:
+                    word = vocab[word_idx]
+                    words.append(pret[word])  # the embedding
+                out.append(words)
+            return torch.Tensor(out)
+
+        new_trg = fix_target(batch.trg_raw)
+
+        loss = criterion(pre_output, new_trg)
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens
+        loss.backward()
+        optim.step()
+        optim.zero_grad()
+        loss.detach()
+        total_loss += loss.item()
 
         if model.training and i % print_every == 0:
             elapsed = time.time() - start
@@ -117,28 +137,88 @@ def run_epoch(data_iter, model, optim, print_every=50):
             start = time.time()
             print_tokens = 0
 
-    return math.exp(total_loss / float(total_tokens))
+    return math.exp(total_loss * norm / float(total_tokens))
 
 
-def data_gen(sentence,
-             num_words=11,
-             batch_size=1,
-             num_batches=1,
-             length=10,
-             pad_index=1,
-             sos_index=1):
-    """Generate random data for a src-tgt copy task."""
+def reverse_lookup_words(x, length, token, vocab=None):
+
+    z = [0]
+    if vocab is not None:
+        z += [vocab.itos.index(i) for i in x.split(' ')]
+    while len(z) < length:
+        z += ([token])
+    return np.asarray([z])
+
+
+def lookup_words_full_vocab(x):
+    x = [vocab[i] for i in x]
+    return x
+
+
+def lookup_words_full_vocab_from_embeddings(x):
+    return [pret.similar_by_vector(i)[0][0] for i in x]
+
+
+def reverse_lookup_words_full_vocab(x, length, token):
+
+    z = [0]
+    if vocab is not None:
+        z += [vocab.index(i) for i in x.split(' ')]  # i is a sentence
+    while len(z) < length:
+        z += ([token])
+    z += [EOS_INDEX]
+    return np.asarray([z])
+
+
+# def reverse_lookup_words_full_vocab_with_pre_embedding(x, length, token):
+#     # passed a Tensor.tolist() -> [[]]
+#     z =  # [[]]
+
+
+def data_gen(sentence, article, num_words=11, num_batches=1, length=MAX_LEN):
     for i in range(num_batches):
         data = torch.from_numpy(
-            reverse_lookup_words(sentence, length, pad_index, SRC.vocab))
-        data[:, 0] = sos_index
+            reverse_lookup_words_full_vocab(
+                sentence,
+                length,
+                PAD_INDEX,
+            ))
+        data[:, 0] = SOS_INDEX
         data = data.cuda() if USE_CUDA else data
         src = data[:, 1:]
-        trg = data
+        target = torch.from_numpy(
+            reverse_lookup_words_full_vocab(article, length, PAD_INDEX))
+        target = target.cuda() if USE_CUDA else target
+        trg = target[:]
         src_lengths = [length - 1]
         trg_lengths = [length]
         yield Batch((src, src_lengths), (trg, trg_lengths),
-                    pad_index=pad_index)
+                    pad_index=PAD_INDEX)
+
+
+def data_gen_single(sentence,
+                    article,
+                    num_words=11,
+                    num_batches=1,
+                    length=MAX_LEN):
+    data = torch.from_numpy(
+        reverse_lookup_words_full_vocab(
+            sentence,
+            length,
+            PAD_INDEX,
+        ))
+    data[:, 0] = SOS_INDEX
+    data = data.cuda() if USE_CUDA else data
+    src = data[:, 1:]
+    target = torch.from_numpy(
+        reverse_lookup_words_full_vocab(article, length, PAD_INDEX))
+    target = target.cuda() if USE_CUDA else target
+    trg = target[:]
+    src_lengths = [length - 1]
+    trg_lengths = [length]
+    return Batch(
+        (src, src_lengths), (trg, trg_lengths),
+        pad_index=PAD_INDEX)  # src is torch.Tensor and src_lengths is []
 
 
 def greedy_decode(model,
@@ -146,35 +226,33 @@ def greedy_decode(model,
                   src_mask,
                   src_lengths,
                   max_len=100,
-                  sos_index=1,
-                  eos_index=None):
+                  sos_index=SOS_INDEX,
+                  eos_index=EOS_INDEX):
     """Greedily decode a sentence."""
 
     with torch.no_grad():
-        encoder_hidden, encoder_final = model.encode(src, src_mask,
-                                                     src_lengths)
+        encoder_hidden, encoder_final = model.module.encode(
+            src, src_mask, src_lengths)
         prev_y = torch.ones(1, 1).fill_(sos_index).type_as(src)
         trg_mask = torch.ones_like(prev_y)
 
     output = []
     attention_scores = []
     hidden = None
-
     for i in range(max_len):
         with torch.no_grad():
-            out, hidden, pre_output = model.decode(encoder_hidden,
-                                                   encoder_final, src_mask,
-                                                   prev_y, trg_mask, hidden)
+            out, hidden, pre_output = model.module.decode(
+                encoder_hidden, encoder_final, src_mask, prev_y, trg_mask,
+                hidden)
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-            prob = model.module.generator(pre_output[:, -1])
-
-        _, next_word = torch.max(prob, dim=1)
+        next_word = pret.similar_by_vector(pre_output[0][0].tolist())
         next_word = next_word.data.item()
         output.append(next_word)
         prev_y = torch.ones(1, 1).type_as(src).fill_(next_word)
-        attention_scores.append(model.decoder.attention.alphas.cpu().numpy())
+        attention_scores.append(
+            model.module.decoder.attention.alphas.cpu().numpy())
 
     output = np.array(output)
 
@@ -303,7 +381,7 @@ if True:
         init_token=SOS_TOKEN,
         eos_token=EOS_TOKEN)
 
-    MAX_LEN = 25  # NOTE: we filter out a lot of sentences for speed
+    MAX_LEN = 50  # NOTE: we filter out a lot of sentences for speed
 
     data_fields = [('sentence', SRC), ('article', TRG)]
 
@@ -384,7 +462,7 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
 
     # optionally add label smoothing; see the Annotated Transformer
     optim = torch.optim.Adam(model.parameters(), lr=lr)
-    model.cuda()
+    # model.cuda()
     dev_perplexities = []
 
     for epoch in range(num_epochs):

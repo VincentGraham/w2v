@@ -375,6 +375,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
     total_tokens = 0
     total_loss = 0
     print_tokens = 0
+    print(len(list(data_iter)))
     for i, batch in enumerate(data_iter, 1):
         # for obj in gc.get_objects():
         #     if (not os.path.isdir(str(obj) and not isinstance(obj, io.IOBase))
@@ -432,7 +433,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
             start = time.time()
             print_tokens = 0
 
-    return math.exp(total_loss * norm / float(total_tokens))
+    return math.exp(total_loss / float(total_tokens))
 
 
 def reverse_lookup_words(x, length, token, vocab=None):
@@ -516,29 +517,6 @@ def data_gen_single(sentence,
         pad_index=PAD_INDEX)  # src is torch.Tensor and src_lengths is []
 
 
-class SimpleLossCompute:
-    """A simple loss compute and train function."""
-
-    def __init__(self, generator, criterion, opt=None):
-        self.generator = generator
-        self.criterion = criterion
-        self.opt = opt
-
-    def __call__(self, x, y, norm):
-
-        output, loss = self.generator(x)
-        # loss = self.criterion(z.contiguous().view(-1, z.size(-1)),
-        #                       y.contiguous().view(-1))
-        loss = loss / norm
-
-        if self.opt is not None:
-            loss.backward()
-            self.opt.step()
-            self.opt.zero_grad()
-
-        return loss.data.item() * norm
-
-
 def greedy_decode(model,
                   src,
                   src_mask,
@@ -557,7 +535,6 @@ def greedy_decode(model,
     output = []
     attention_scores = []
     hidden = None
-    m = FacebookAdaptiveSoftmax(src_vocab, 256, [2000, 10000], dropout=0.1)
     for i in range(max_len):
         with torch.no_grad():
             out, hidden, pre_output = model.decode(encoder_hidden,
@@ -566,10 +543,7 @@ def greedy_decode(model,
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-            prob = m(pre_output[:, -1], pre_output[:, -1])  #FIXME
-            log_prob = m.get_log_prob(prob)
-
-        _, next_word = torch.max(prob, dim=1)
+        next_word = pret.similar_by_vector(pre_output[0][0].tolist())
         next_word = next_word.data.item()
         output.append(next_word)
         prev_y = torch.ones(1, 1).type_as(src).fill_(next_word)
