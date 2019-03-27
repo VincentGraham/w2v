@@ -308,9 +308,9 @@ def print_examples(example_iter,
     print()
 
     if src_vocab is not None and trg_vocab is not None:
-        src_eos_index = src_vocab.stoi[EOS_TOKEN]
-        trg_sos_index = trg_vocab.stoi[SOS_TOKEN]
-        trg_eos_index = trg_vocab.stoi[EOS_TOKEN]
+        src_eos_index = src_vocab.stoi([EOS_TOKEN])
+        trg_sos_index = trg_vocab.stoi([SOS_TOKEN])
+        trg_eos_index = trg_vocab.stoi([EOS_TOKEN])
     else:
         src_eos_index = None
         trg_sos_index = 1
@@ -403,7 +403,7 @@ if True:
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
     TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ * 2)
 
-    PAD_INDEX = TRG.vocab.stoi[PAD_TOKEN]
+    PAD_INDEX = TRG.vocab.stoi([PAD_TOKEN]
 
 # TODO: add custom tokens using the rearrange .py file
 
@@ -460,14 +460,15 @@ def wrap_data(data):
 
 def rebatch(pad_idx, batch):
     """Wrap torchtext batch into our own Batch class for pre-processing"""
-    return Batch(batch.src, batch.trg, pad_idx)
+    return Batch(batch.sentence, batch.article, pad_idx)
 
 
-def train(model, num_epochs=10, lr=0.0003):
+def train(model, num_epochs=10, lr=0.0003, print_every=100):
 
     # optionally add label smoothing; see the Annotated Transformer
+    criterion = nn.NLLLoss(reduction="sum", ignore_index=PAD_INDEX)
     optim = torch.optim.Adam(model.parameters(), lr=lr)
-    # model.cuda()
+
     dev_perplexities = []
 
     for epoch in range(num_epochs):
@@ -475,10 +476,22 @@ def train(model, num_epochs=10, lr=0.0003):
         print("Epoch", epoch)
         model.train()
         train_perplexity = run_epoch(
-            (rebatch(PAD_INDEX, b) for b in train_iter),
-            model,
-            print_every=1,
-            optim=optim)
+            train_iter, model, print_every=1, optim=optim)
+
+        model.eval()
+        with torch.no_grad():
+            print_examples((rebatch(PAD_INDEX, x) for x in valid_iter),
+                           model,
+                           n=3,
+                           src_vocab=SRC.vocab,
+                           trg_vocab=TRG.vocab)
+
+            dev_perplexity = run_epoch(
+                (rebatch(PAD_INDEX, b) for b in valid_iter),
+                model,
+            )
+            print("Validation perplexity: %f" % dev_perplexity)
+            dev_perplexities.append(dev_perplexity)
 
     return dev_perplexities
 

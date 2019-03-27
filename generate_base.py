@@ -595,9 +595,9 @@ def print_examples(example_iter,
     print()
     with torch.no_grad():
         if src_vocab is not None and trg_vocab is not None:
-            src_eos_index = vocab.index[EOS_TOKEN]
-            trg_sos_index = vocab.index[SOS_TOKEN]
-            trg_eos_index = vocab.index[EOS_TOKEN]
+            src_eos_index = src_vocab.stoi([EOS_TOKEN])
+            trg_sos_index = trg_vocab.stoi([SOS_TOKEN])
+            trg_eos_index = trg_vocab.stoi([EOS_TOKEN])
         else:
             src_eos_index = None
             trg_sos_index = 1
@@ -757,8 +757,8 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
             print_examples((rebatch(PAD_INDEX, x) for x in valid_iter),
                            model,
                            n=3,
-                           src_vocab=SRC.vocab,
-                           trg_vocab=TRG.vocab)
+                           src_vocab=vocab,
+                           trg_vocab=vocab)
 
             dev_perplexity = run_epoch(
                 (rebatch(PAD_INDEX, b) for b in valid_iter),
@@ -807,8 +807,8 @@ def load_model():
 def load_dataparallel_model():
     from collections import OrderedDict
     model = make_model(
-        len(SRC.vocab),
-        len(TRG.vocab),
+        len(vocab),
+        len(vocab),
         emb_size=500,
         hidden_size=1500,
         num_layers=3,
@@ -887,7 +887,7 @@ def explain(bot, i):
         send_message(bot, chat_id=id, text=str([x[1] for x in vocab[:100]]))
         works = False
     for c in i.split():
-        if c not in SRC.vocab.itos:
+        if c not in vocab:
             works = False
     if works:
         send_message(
