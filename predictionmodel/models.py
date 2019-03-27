@@ -1,35 +1,78 @@
-from load_vocab import load_word2vec_model, load_word2vec_vocab
+from load_vocab import load_word2vec_model, load_word2vec_vocab, load_csv_for_tensor
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math, copy, time
 import matplotlib.pyplot as plt
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from torch.utils import checkpoint
 import numpy as np
 from rearrange import check_case, tokenize
+import logging
 import gc
+import io
+import os
+import psutil
+import random
+from adasoft import AdaptiveLoss, AdaptiveSoftmax, FacebookAdaptiveSoftmax, FacebookAdaptiveLoss
+
+logging.basicConfig(
+    format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+
+USE_CUDA = False
+DEVICE = torch.device('cpu')
+
+# or set to 'cpu'
+FAST = False
+ACCUMULATION = 32
+LOWER = False  # CASE SENSITIVE
+
+vocab = load_word2vec_vocab()
+pret = load_word2vec_model()
+
+logging.info("Loaded gensim models")
+UNK_TOKEN = "<u>"
+PAD_TOKEN = "<p>"
+SOS_TOKEN = "<s>"
+EOS_TOKEN = "</s>"
+
+PAD_INDEX = vocab.index(PAD_TOKEN)
+SOS_INDEX = vocab.index(SOS_TOKEN)
+EOS_INDEX = vocab.index(EOS_TOKEN)
+UNK_INDEX = vocab.index(UNK_TOKEN)
+MAX_LEN = 10
 
 
 class EncoderDecoder(nn.Module):
-    def __init__(self, encoder, decoder, src_embed, trg_embed, generator):
+    def __init__(self,
+                 encoder,
+                 decoder,
+                 src_embed,
+                 trg_embed,
+                 generator,
+                 nh=0,
+                 vs=0):
         super(EncoderDecoder, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.src_embed = src_embed
         self.trg_embed = trg_embed
-        self.generator = generator
+        # self.generator = nn.AdaptiveLogSoftmaxWithLoss(
+        #     nh, vs, cutoffs=[round(vs / 30), 3 * round(vs / 30)], div_value=4)
 
-    def forward(self, src, trg, src_mask, trg_mask, src_lengths, trg_lengths):
+    def forward(self, src, trg, src_mask, trg_mask, src_lengths, trg_lengths,
+                trg_y):
         """Take in and process masked src and target sequences."""
-        encoder_hidden, encoder_final = checkpoint(self.encode, src, src_mask,
-                                                   src_lengths)
-        return checkpoint(self.decode, encoder_hidden, encoder_final, src_mask,
-                          trg, trg_mask)
+        encoder_hidden, encoder_final = self.encode(src, src_mask, src_lengths)
+
+        out, _, pre_output = self.decode(encoder_hidden, encoder_final,
+                                         src_mask, trg, trg_mask)
+
+        # output, loss = self.generator(pre_output, trg_y)
+        # return out, _, pre_output, output, loss
+        return out, _, pre_output
 
     def encode(self, src, src_mask, src_lengths):
-        return checkpoint(self.encoder, self.src_embed(src), src_mask,
-                          src_lengths)
+        return self.encoder(self.src_embed(src), src_mask, src_lengths)
 
     def decode(self,
                encoder_hidden,
@@ -38,8 +81,7 @@ class EncoderDecoder(nn.Module):
                trg,
                trg_mask,
                decoder_hidden=None):
-        return checkpoint(
-            self.decoder,
+        return self.decoder(
             self.trg_embed(trg),
             encoder_hidden,
             encoder_final,
@@ -56,13 +98,25 @@ class Generator(nn.Module):
         self.proj = nn.Linear(hidden_size, vocab_size, bias=False)
 
     def forward(self, x):
-        return checkpoint(F.log_softmax, self.proj(x), dim=-1)
+        return F.log_softmax(self.proj(x), dim=-1)
+
+
+class GeneratorTest(nn.Module):
+    def __init__(self, nh, vs):
+        super(GeneratorTest, self).__init__()
+        self.out = nn.AdaptiveLogSoftmaxWithLoss(
+            nh, vs, cutoffs=[round(vs / 30), 3 * round(vs / 30)], div_value=4)
+
+    def forward(x, y):
+        x = x.view(-1, x.size()[2])
+        y = y.view(y.size()[0] * y.size()[1])
+        return self.out(x, y)
 
 
 class Encoder(nn.Module):
     """Encodes a sequence of word embeddings"""
 
-    def __init__(self, input_size, hidden_size, num_layers=1, dropout=0.):
+    def __init__(self, input_size, hidden_size, num_layers=1, dropout=0.1):
         super(Encoder, self).__init__()
         self.num_layers = num_layers
         self.rnn = nn.GRU(
@@ -80,172 +134,23 @@ class Encoder(nn.Module):
         x should have dimensions [batch, time, dim].
         """
         packed = pack_padded_sequence(x, lengths, batch_first=True)
-        self.rnn.flatten_parameters()
         output, final = self.rnn(packed)
         output, _ = pad_packed_sequence(output, batch_first=True)
 
         # we need to manually concatenate the final states for both directions
         fwd_final = final[0:final.size(0):2]
         bwd_final = final[1:final.size(0):2]
-        final = checkpoint(
-            torch.cat, [fwd_final, bwd_final],
-            dim=2)  # [num_layers, batch, 2*dim]
+        final = torch.cat([fwd_final, bwd_final],
+                          dim=2)  # [num_layers, batch, 2*dim]
 
         return output, final
-
-
-class Decoder(nn.Module):
-    """A conditional RNN decoder with attention."""
-
-    def __init__(self,
-                 emb_size,
-                 hidden_size,
-                 attention,
-                 num_layers=1,
-                 dropout=0.5,
-                 bridge=True):
-        super(Decoder, self).__init__()
-
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.attention = attention
-        self.dropout = dropout
-
-        self.rnn = nn.GRU(
-            emb_size + 2 * hidden_size,
-            hidden_size,
-            num_layers,
-            batch_first=True,
-            dropout=dropout)
-
-        # to initialize from the final encoder state
-        self.bridge = nn.Linear(
-            2 * hidden_size, hidden_size, bias=True) if bridge else None
-
-        self.dropout_layer = nn.Dropout(p=dropout)
-        self.pre_output_layer = nn.Linear(
-            hidden_size + 2 * hidden_size + emb_size, hidden_size, bias=False)
-
-    def forward_step(self, prev_embed, encoder_hidden, src_mask, proj_key,
-                     hidden):
-        """Perform a single decoder step (1 word)"""
-
-        # compute context vector using attention mechanism
-        query = hidden[-1].unsqueeze(1)  # [#layers, B, D] -> [B, 1, D]
-        context, attn_probs = self.attention(
-            query=query,
-            proj_key=proj_key,
-            value=encoder_hidden,
-            mask=src_mask)
-
-        # update rnn hidden state
-        rnn_input = torch.cat([prev_embed, context], dim=2)
-        self.rnn.flatten_parameters()
-        output, hidden = self.rnn(rnn_input, hidden)
-
-        pre_output = torch.cat([prev_embed, output, context], dim=2)
-        pre_output = self.dropout_layer(pre_output)
-        pre_output = self.pre_output_layer(pre_output)
-
-        return output, hidden, pre_output
-
-    def forward(self,
-                trg_embed,
-                encoder_hidden,
-                encoder_final,
-                src_mask,
-                trg_mask,
-                hidden=None,
-                max_len=None):
-        """Unroll the decoder one step at a time."""
-
-        # the maximum number of steps to unroll the RNN
-        if max_len is None:
-            max_len = trg_mask.size(-1)
-
-        # initialize decoder hidden state
-        if hidden is None:
-            hidden = self.init_hidden(encoder_final)
-
-        # pre-compute projected encoder hidden states
-        # (the "keys" for the attention mechanism)
-        # this is only done for efficiency
-        proj_key = self.attention.key_layer(encoder_hidden)
-
-        # here we store all intermediate hidden states and pre-output vectors
-        decoder_states = []
-        pre_output_vectors = []
-
-        # unroll the decoder RNN for max_len steps
-        for i in range(max_len):
-            prev_embed = trg_embed[:, i].unsqueeze(1)
-            output, hidden, pre_output = self.forward_step(
-                prev_embed, encoder_hidden, src_mask, proj_key, hidden)
-            decoder_states.append(output)
-            pre_output_vectors.append(pre_output)
-
-        decoder_states = torch.cat(decoder_states, dim=1)
-        pre_output_vectors = torch.cat(pre_output_vectors, dim=1)
-        return decoder_states, hidden, pre_output_vectors  # [B, N, D]
-
-    def init_hidden(self, encoder_final):
-        """Returns the initial decoder state,
-        conditioned on the final encoder state."""
-
-        if encoder_final is None:
-            return None  # start with zeros
-
-        return torch.tanh(self.bridge(encoder_final))
-
-
-class BahdanauAttention(nn.Module):
-    """Implements Bahdanau (MLP) attention"""
-
-    def __init__(self, hidden_size, key_size=None, query_size=None):
-        super(BahdanauAttention, self).__init__()
-
-        # We assume a bi-directional encoder so key_size is 2*hidden_size
-        key_size = 2 * hidden_size if key_size is None else key_size
-        query_size = hidden_size if query_size is None else query_size
-
-        self.key_layer = nn.Linear(key_size, hidden_size, bias=False)
-        self.query_layer = nn.Linear(query_size, hidden_size, bias=False)
-        self.energy_layer = nn.Linear(hidden_size, 1, bias=False)
-
-        # to store attention scores
-        self.alphas = None
-
-    def forward(self, query=None, proj_key=None, value=None, mask=None):
-        assert mask is not None, "mask is required"
-
-        # We first project the query (the decoder state).
-        # The projected keys (the encoder states) were already pre-computated.
-        query = self.query_layer(query)
-
-        # Calculate scores.
-        scores = self.energy_layer(torch.tanh(query + proj_key))
-        scores = scores.squeeze(2).unsqueeze(1)
-
-        # Mask out invalid positions.
-        # The mask marks valid positions so we invert it using `mask & 0`.
-        scores.data.masked_fill_(mask == 0, -float('inf'))
-
-        # Turn scores to probabilities.
-        alphas = checkpoint(F.softmax, scores, dim=-1)
-        self.alphas = alphas
-
-        # The context vector is the weighted sum of the values.
-        context = checkpoint(torch.bmm, alphas, value)
-
-        # context shape: [B, 1, 2D], alphas shape: [B, 1, M]
-        return context, alphas
 
 
 def make_model(src_vocab,
                tgt_vocab,
                emb_size=500,
-               hidden_size=512,
-               num_layers=1,
+               hidden_size=1024,
+               num_layers=3,
                dropout=0.1,
                pret=None):
     "Helper: Construct a model from hyperparameters."
@@ -267,7 +172,9 @@ def make_model(src_vocab,
             hidden_size,
             attention,
             num_layers=num_layers,
-            dropout=dropout), embedding1, embedding2,
-        Generator(hidden_size, tgt_vocab))
+            dropout=dropout),
+        embedding1,
+        embedding2,
+    )
 
     return model

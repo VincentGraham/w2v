@@ -63,7 +63,6 @@ class Batch:
             self.trg = trg[:, :-1]
             self.trg_lengths = trg_lengths
             self.trg_raw = self.trg.tolist()
-            self.trg_lengths_raw = self.trg_lengths.tolist()
             self.trg_y = trg[:, 1:]
             self.trg_mask = (self.trg_y != pad_index)
             self.ntokens = (self.trg_y != pad_index).data.sum().item()
@@ -107,7 +106,8 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         #     len(vocab), 256, [2000, 10000], dropout=0.1)
         # criterion = FacebookAdaptiveLoss(PAD_INDEX)
         criterion = nn.NLLLoss(reduction="sum", ignore_index=0)
-        criterion = nn.MSELoss()
+
+        # criterion = nn.MSELoss()
 
         # x = pre_output.view(-1, pre_output.size()[1])
         # y = batch.trg_y.contiguous().view(
@@ -121,12 +121,26 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
                 words = []
                 for word_idx in list:
                     word = vocab[word_idx]
-                    words.append(word)  # replace with below for non-nllloss
-                    # words.append(pret[word])  # the embedding
+                    # words.append(word)  # replace with below for non-nllloss
+                    words.append(pret[word])  # the embedding
                 out.append(words)
             return torch.Tensor(out)
 
-        new_trg = fix_target(batch.trg_raw)
+        def fix_target_out(tens):
+            out = []
+            for list in tens:
+                words = []
+                for word_idx in list:
+                    word = vocab[
+                        word_idx]  # replace with below for non-nllloss
+                    # words.append(pret[word])  # the embedding
+                words.append(
+                    reverse_lookup_words_full_vocab(
+                        ' '.join([vocab[o] for o in list]), len(list),
+                        PAD_INDEX))
+            return torch.LongTensor(words[0].tolist())
+
+        new_trg = fix_target_out(batch.trg_raw)
 
         loss = criterion(pre_output, new_trg)
         total_tokens += batch.ntokens
@@ -170,7 +184,10 @@ def reverse_lookup_words_full_vocab(x, length, token):
 
     z = [0]
     if vocab is not None:
-        z += [vocab.index(i) for i in x.split(' ')]  # i is a sentence
+        z += [
+            vocab.index(i) if i in vocab else vocab.index(UNK_TOKEN)
+            for i in x.split(' ')
+        ]  # i is a sentence
     while len(z) < length:
         z += ([token])
     z += [EOS_INDEX]
@@ -192,7 +209,7 @@ def data_gen(sentence, article, num_words=11, num_batches=1, length=MAX_LEN):
             ))
         data[:, 0] = SOS_INDEX
         data = data.cuda() if USE_CUDA else data
-        src = data[:, 1:]
+        src = data[:, 1:-1]
         target = torch.from_numpy(
             reverse_lookup_words_full_vocab(article, length, PAD_INDEX))
         target = target.cuda() if USE_CUDA else target
@@ -237,12 +254,24 @@ def greedy_decode(model,
                   eos_index=EOS_INDEX):
     """Greedily decode a sentence."""
 
+    def fix_target(tens):
+        out = []
+        for list in tens:
+            words = []
+            for word_idx in list:
+                word = vocab[word_idx]  # replace with below for non-nllloss
+                # words.append(pret[word])  # the embedding
+            words.append(
+                reverse_lookup_words_full_vocab(
+                    ' '.join([vocab[o] for o in list]), len(list), PAD_INDEX))
+        return torch.LongTensor(words[0].tolist())
+
     with torch.no_grad():
         encoder_hidden, encoder_final = model.encode(src, src_mask,
                                                      src_lengths)
         prev_y = torch.ones(1, 1).fill_(sos_index).type_as(src)
         trg_mask = torch.ones_like(prev_y)
-
+    prev_y = fix_target(prev_y)
     output = []
     attention_scores = []
     hidden = None
@@ -254,20 +283,21 @@ def greedy_decode(model,
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
-        next_word = pret.similar_by_vector(pre_output[0][0].tolist())
-        next_word = next_word.data.item()
+        vec = np.asarray(pre_output.flatten().tolist())
+        next_word = pret.most_similar([vec], topn=1)[0][0]
         output.append(next_word)
-        prev_y = torch.ones(1, 1).type_as(src).fill_(next_word)
+        prev_y = torch.ones(1, 1).type_as(src).fill_(vocab.index(next_word))
+        prev_y = fix_target(prev_y)
         attention_scores.append(model.decoder.attention.alphas.cpu().numpy())
 
-    output = np.array(output)
+    # output = np.array(output)
 
     # cut off everything starting from </s>
     # (only when eos_index provided)
-    if eos_index is not None:
-        first_eos = np.where(output == eos_index)[0]
-        if len(first_eos) > 0:
-            output = output[:first_eos[0]]
+    # if eos_index is not None:
+    #     first_eos = np.where(output == eos_index)[0]
+    #     if len(first_eos) > 0:
+    #         output = output[:first_eos[0]]
 
     return output, np.concatenate(attention_scores, axis=1)
 
@@ -296,8 +326,8 @@ def print_examples(example_iter,
             words = []
             for word_idx in list:
                 word = vocab[word_idx]
-                words.append(word)  # replace with below for non-nllloss
-                # words.append(pret[word])  # the embedding
+                # words.append(word)  # replace with below for non-nllloss
+                words.append(pret[word])  # the embedding
             out.append(words)
         return torch.Tensor(out)
 
@@ -319,21 +349,20 @@ def print_examples(example_iter,
             src = batch.src.cpu().numpy()[0, :]
             trg = fix_target(batch.trg_raw).cpu().numpy()[0, :]
 
-            # remove </s> (if it is there)
             result, _ = greedy_decode(
                 model,
                 batch.src,
                 batch.src_mask,
-                batch.src_lengths,
+                batch.src_lengths + 1,
                 max_len=max_len,
                 sos_index=trg_sos_index,
                 eos_index=trg_eos_index)
+            return " ".join(result)  #FIXME REMOVE
             print("Example #%d" % (i + 1))
             print("Src : ", " ".join(lookup_words_full_vocab(src)))
             print("Trg : ", " ".join(
                 lookup_words_full_vocab_from_embeddings(trg)))
-            print("Pred: ", " ".join(
-                lookup_words_full_vocab_from_embeddings(result)))
+            print("Pred: ", " ".join(result))
             print()
 
             return " ".join(
@@ -346,14 +375,15 @@ def print_examples(example_iter,
 
                 # remove </s> (if it is there)
 
-                result, _ = greedy_decode(
+                result = greedy_decode(
                     model,
                     batch.src,
                     batch.src_mask,
                     batch.src_lengths,
                     max_len=max_len,
-                    sos_index=trg_sos_index,
-                    eos_index=trg_eos_index)
+                    sos_index=SOS_INDEX,
+                    eos_index=EOS_INDEX)[0]
+                return str(result)
                 print("Example #%d" % (i + 1))
                 print("Src : ", " ".join(lookup_words_full_vocab(src)))
                 print("Trg : ", " ".join(
@@ -487,9 +517,9 @@ model = make_model(
     emb_size=500,
     hidden_size=256,
     num_layers=3,
-    dropout=0.1)
+    dropout=0.1).cuda()
 
-model = nn.DataParallel(model, device_ids=[0, 1, 2, 3]).cuda()
+# model = model, device_ids=[0, 1, 2, 3]).cuda()
 
 dev_perplexities = train(model, num_epochs=100)
 
@@ -502,7 +532,7 @@ def load_model():
         len(SRC.vocab),
         len(TRG.vocab),
         emb_size=500,
-        hidden_size=1500,
+        hidden_size=1024,
         num_layers=3,
         dropout=0.2)
     model.load_state_dict(torch.load('/mounted/data/torch/model'))
