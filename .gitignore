@@ -4,3 +4,7 @@ __pycache__
 data
 .data
 predictionmodel/openmpi-3.0.0
+best_model.ckpt.data-00000-of-00001
+best_model.ckpt.meta
+checkpoint
+best_model.ckpt.data-00000-of-00001
