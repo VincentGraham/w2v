@@ -440,7 +440,7 @@ def reverse_lookup_words(x, length, token, vocab=None):
 
     z = [0]
     if vocab is not None:
-        z += [vocab.itos.index(i) for i in x.split(' ')]
+        z += [vocab.index(i) for i in x.split(' ')]
     while len(z) < length:
         z += ([token])
     return np.asarray([z])
@@ -563,7 +563,7 @@ def greedy_decode(model,
 
 def lookup_words(x, vocab=None):
     if vocab is not None:
-        x = [vocab.itos[i] for i in x]
+        x = [vocab[i] for i in x]
 
     return [str(t) for t in x]
 
@@ -595,9 +595,9 @@ def print_examples(example_iter,
     print()
     with torch.no_grad():
         if src_vocab is not None and trg_vocab is not None:
-            src_eos_index = src_vocab.stoi([EOS_TOKEN])
-            trg_sos_index = trg_vocab.stoi([SOS_TOKEN])
-            trg_eos_index = trg_vocab.stoi([EOS_TOKEN])
+            src_eos_index = EOS_INDEX
+            trg_sos_index = SOS_INDEX
+            trg_eos_index = EOS_INDEX
         else:
             src_eos_index = None
             trg_sos_index = 1

@@ -80,11 +80,12 @@ class Batch:
 
 def run_epoch(data_iter, model, print_every=50, optim=None):
     """Standard Training and Logging Function"""
-    print_every = 1
+
     start = time.time()
     total_tokens = 0
     total_loss = 0
     print_tokens = 0
+    print(len(list(data_iter)))
     for i, batch in enumerate(data_iter, 1):
         # for obj in gc.get_objects():
         #     if (not os.path.isdir(str(obj) and not isinstance(obj, io.IOBase))
@@ -96,7 +97,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         #         del obj
         #         gc.collect()
         batch = rebatch(PAD_INDEX, batch)
-        out, _, pre_output, = model.module.forward(
+        out, _, pre_output, = model.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
             batch.src_lengths, batch.trg_lengths, batch.trg_y)
 
@@ -105,7 +106,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         # m = FacebookAdaptiveSoftmax(
         #     len(vocab), 256, [2000, 10000], dropout=0.1)
         # criterion = FacebookAdaptiveLoss(PAD_INDEX)
-        # criterion = nn.MSELoss(reduction="sum", ignore_index=0)
+        criterion = nn.NLLLoss(reduction="sum", ignore_index=0)
         criterion = nn.MSELoss()
 
         # x = pre_output.view(-1, pre_output.size()[1])
@@ -120,7 +121,8 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
                 words = []
                 for word_idx in list:
                     word = vocab[word_idx]
-                    words.append(pret[word])  # the embedding
+                    words.append(word)  # replace with below for non-nllloss
+                    # words.append(pret[word])  # the embedding
                 out.append(words)
             return torch.Tensor(out)
 
@@ -142,14 +144,14 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
             start = time.time()
             print_tokens = 0
 
-    return math.exp(total_loss * norm / float(total_tokens))
+    return math.exp(total_loss / float(total_tokens))
 
 
 def reverse_lookup_words(x, length, token, vocab=None):
 
     z = [0]
     if vocab is not None:
-        z += [vocab.itos.index(i) for i in x.split(' ')]
+        z += [vocab.index(i) for i in x.split(' ')]
     while len(z) < length:
         z += ([token])
     return np.asarray([z])
@@ -236,8 +238,8 @@ def greedy_decode(model,
     """Greedily decode a sentence."""
 
     with torch.no_grad():
-        encoder_hidden, encoder_final = model.module.encode(
-            src, src_mask, src_lengths)
+        encoder_hidden, encoder_final = model.encode(src, src_mask,
+                                                     src_lengths)
         prev_y = torch.ones(1, 1).fill_(sos_index).type_as(src)
         trg_mask = torch.ones_like(prev_y)
 
@@ -246,9 +248,9 @@ def greedy_decode(model,
     hidden = None
     for i in range(max_len):
         with torch.no_grad():
-            out, hidden, pre_output = model.module.decode(
-                encoder_hidden, encoder_final, src_mask, prev_y, trg_mask,
-                hidden)
+            out, hidden, pre_output = model.decode(encoder_hidden,
+                                                   encoder_final, src_mask,
+                                                   prev_y, trg_mask, hidden)
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context
@@ -256,8 +258,7 @@ def greedy_decode(model,
         next_word = next_word.data.item()
         output.append(next_word)
         prev_y = torch.ones(1, 1).type_as(src).fill_(next_word)
-        attention_scores.append(
-            model.module.decoder.attention.alphas.cpu().numpy())
+        attention_scores.append(model.decoder.attention.alphas.cpu().numpy())
 
     output = np.array(output)
 
@@ -271,25 +272,11 @@ def greedy_decode(model,
     return output, np.concatenate(attention_scores, axis=1)
 
 
-def reverse_lookup_words(x, length, token, vocab=None):
-    z = [0]
-    if vocab is not None:
-        z += [vocab.itos.index(i) for i in x.split(' ')]
-    while len(z) < length:
-        z += ([token])
-    return np.asarray([z])
-
-
 def lookup_words(x, vocab=None):
     if vocab is not None:
-        x = [vocab.itos[i] for i in x]
+        x = [vocab[i] for i in x]
 
     return [str(t) for t in x]
-
-
-def lookup_words_full_vocab(x):
-    x = [vocab[i] for i in x]
-    return [str(x) for _ in x]
 
 
 def print_examples(example_iter,
@@ -303,43 +290,85 @@ def print_examples(example_iter,
                    trg_vocab=None):
     """Prints N examples. Assumes batch size of 1."""
 
+    def fix_target(tens):
+        out = []
+        for list in tens:
+            words = []
+            for word_idx in list:
+                word = vocab[word_idx]
+                words.append(word)  # replace with below for non-nllloss
+                # words.append(pret[word])  # the embedding
+            out.append(words)
+        return torch.Tensor(out)
+
     model.eval()
     count = 0
     print()
+    with torch.no_grad():
+        if src_vocab is not None and trg_vocab is not None:
+            src_eos_index = EOS_INDEX
+            trg_sos_index = SOS_INDEX
+            trg_eos_index = EOS_INDEX
+        else:
+            src_eos_index = None
+            trg_sos_index = 1
+            trg_eos_index = None
 
-    if src_vocab is not None and trg_vocab is not None:
-        src_eos_index = src_vocab.stoi([EOS_TOKEN])
-        trg_sos_index = trg_vocab.stoi([SOS_TOKEN])
-        trg_eos_index = trg_vocab.stoi([EOS_TOKEN])
-    else:
-        src_eos_index = None
-        trg_sos_index = 1
-        trg_eos_index = None
+        if isinstance(example_iter, Batch):
+            batch = example_iter
+            src = batch.src.cpu().numpy()[0, :]
+            trg = fix_target(batch.trg_raw).cpu().numpy()[0, :]
 
-    for i, batch in enumerate(example_iter):
+            # remove </s> (if it is there)
+            result, _ = greedy_decode(
+                model,
+                batch.src,
+                batch.src_mask,
+                batch.src_lengths,
+                max_len=max_len,
+                sos_index=trg_sos_index,
+                eos_index=trg_eos_index)
+            print("Example #%d" % (i + 1))
+            print("Src : ", " ".join(lookup_words_full_vocab(src)))
+            print("Trg : ", " ".join(
+                lookup_words_full_vocab_from_embeddings(trg)))
+            print("Pred: ", " ".join(
+                lookup_words_full_vocab_from_embeddings(result)))
+            print()
 
-        src = batch.src.cpu().numpy()[0, :]
-        trg = batch.trg_y.cpu().numpy()[0, :]
+            return " ".join(
+                lookup_words_full_vocab_from_embeddings(
+                    result, vocab=trg_vocab))
+        else:
+            for i, batch in enumerate(example_iter):
+                src = batch.src.cpu().numpy()[0, :]
+                trg = batch.trg_y.cpu().numpy()[0, :]
 
-        # remove </s> (if it is there)
+                # remove </s> (if it is there)
 
-        result, _ = greedy_decode(
-            model,
-            batch.src,
-            batch.src_mask,
-            batch.src_lengths,
-            max_len=max_len,
-            sos_index=trg_sos_index,
-            eos_index=trg_eos_index)
-        print("Example #%d" % (i + 1))
-        print("Src : ", " ".join(lookup_words(src, vocab=src_vocab)))
-        print("Trg : ", " ".join(lookup_words(trg, vocab=trg_vocab)))
-        print("Pred: ", " ".join(lookup_words(result, vocab=trg_vocab)))
-        print()
+                result, _ = greedy_decode(
+                    model,
+                    batch.src,
+                    batch.src_mask,
+                    batch.src_lengths,
+                    max_len=max_len,
+                    sos_index=trg_sos_index,
+                    eos_index=trg_eos_index)
+                print("Example #%d" % (i + 1))
+                print("Src : ", " ".join(lookup_words_full_vocab(src)))
+                print("Trg : ", " ".join(
+                    lookup_words_full_vocab_from_embeddings(trg)))
+                print(
+                    "Pred: ", " ".join(
+                        lookup_words_full_vocab_from_embeddings(result)))
+                print()
 
-        count += 1
-        if count == n:
-            break
+                count += 1
+                if count == n:
+                    break
+                return " ".join(
+                    lookup_words_full_vocab_from_embeddings(
+                        result, vocab=trg_vocab))
 
 
 def plot_perplexity(perplexities):
@@ -350,7 +379,8 @@ def plot_perplexity(perplexities):
     plt.plot(perplexities)
 
 
-from torchtext import data, datasets, vocab
+from torchtext import data, datasets
+from torchtext import vocab as vv
 
 if True:
     import json
@@ -360,12 +390,6 @@ if True:
             x for x in tokenize(text)[0].replace('(', "").replace(")",
                                                                   "").split()
         ]
-
-    UNK_TOKEN = "<u>"
-    PAD_TOKEN = "<p>"
-    SOS_TOKEN = "<s>"
-    EOS_TOKEN = "</s>"
-    LOWER = True
 
     # we include lengths to provide to the RNNs
     SRC = data.Field(
@@ -386,7 +410,7 @@ if True:
         init_token=SOS_TOKEN,
         eos_token=EOS_TOKEN)
 
-    MAX_LEN = 100000  # NOTE: we filter out a lot of sentences for speed
+    MAX_LEN = 30  # NOTE: we filter out a lot of sentences for speed
 
     data_fields = [('sentence', SRC), ('article', TRG)]
 
@@ -395,71 +419,32 @@ if True:
         train='test.csv',
         validation='test.csv',
         format="csv",
-        fields=data_fields,
-        filter_pred=lambda x: len(vars(x)['sentence']) <= MAX_LEN and len(
-            vars(x)['article']) <= 50)
+        fields=data_fields)
+
     MIN_FREQ = 1  # NOTE: we limit the vocabulary to frequent words for speed
-    VOCAB = vocab.Vectors('model.txt', cache='/mounted/data')
+    VOCAB = vv.Vectors('model.txt', cache='/mounted/data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
-    TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ * 2)
+    TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
+    print(PAD_INDEX, SOS_INDEX, EOS_INDEX)
 
-    PAD_INDEX = TRG.vocab.stoi([PAD_TOKEN]
-
-# TODO: add custom tokens using the rearrange .py file
-
-
-def print_data_info(train_data, valid_data, src_field, trg_field):
-    """ This prints some useful stuff about our data sets. """
-
-    print("Data set sizes (number of sentence pairs):")
-    print('train', len(train_data))
-    print('valid', len(valid_data))
-
-    print("First training example:")
-    print("src:", " ".join(vars(train_data[0])['sentence']))
-    print("trg:", " ".join(vars(train_data[0])['article']), "\n")
-
-    print("Most common words (src):")
-    print(
-        "\n".join(
-            ["%10s %10d" % x for x in src_field.vocab.freqs.most_common(15)]),
-        "\n")
-    print("Most common words (trg):")
-    print(
-        "\n".join(
-            ["%10s %10d" % x for x in trg_field.vocab.freqs.most_common(15)]),
-        "\n")
-
-    print("First 10 words (src):")
-    print(
-        "\n".join('%02d %s' % (i, t)
-                  for i, t in enumerate(src_field.vocab.itos[:10])), "\n")
-    print("First 10 words (trg):")
-    print(
-        "\n".join('%02d %s' % (i, t)
-                  for i, t in enumerate(trg_field.vocab.itos[:10])), "\n")
-
-    print("Number of German words (types):", len(src_field.vocab))
-    print("Number of English words (types):", len(trg_field.vocab), "\n")
-
-
-print_data_info(train_data, valid_data, SRC, TRG)
+# print_data_info(train_data, valid_data, SRC, TRG)
 
 train_iter = data.BucketIterator(
     train_data,
-    batch_size=1,
+    batch_size=64,
     train=True,
     sort_within_batch=True,
     sort_key=lambda x: len(x.sentence),
-    repeat=False)
-
-
-def wrap_data(data):
-    return torch.Tensor(data)
+    repeat=False,
+    device=DEVICE)
 
 
 def rebatch(pad_idx, batch):
     """Wrap torchtext batch into our own Batch class for pre-processing"""
+    # for t in batch.sentence:
+    #     t.to(DEVICE)
+    # for t in batch.article:
+    #     t.to(DEVICE)
     return Batch(batch.sentence, batch.article, pad_idx)
 
 
@@ -483,8 +468,8 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
             print_examples((rebatch(PAD_INDEX, x) for x in valid_iter),
                            model,
                            n=3,
-                           src_vocab=SRC.vocab,
-                           trg_vocab=TRG.vocab)
+                           src_vocab=vocab,
+                           trg_vocab=vocab)
 
             dev_perplexity = run_epoch(
                 (rebatch(PAD_INDEX, b) for b in valid_iter),
@@ -495,15 +480,6 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
 
     return dev_perplexities
 
-
-model = make_model(
-    len(SRC.vocab),
-    len(TRG.vocab),
-    emb_size=500,
-    hidden_size=256,
-    num_layers=2,
-    dropout=0.1,
-    pret=pret)
 
 model = nn.DataParallel(model, device_ids=[0, 1, 2, 3]).cuda()
 
