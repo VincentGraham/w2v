@@ -186,7 +186,7 @@ class Decoder(nn.Module):
             query=query,
             proj_key=proj_key,
             value=encoder_hidden,
-            mask=src_mask)
+        )
 
         # update rnn hidden state
         rnn_input = torch.cat([prev_embed, context], dim=2)
@@ -212,12 +212,14 @@ class Decoder(nn.Module):
                 encoder_hidden,
                 encoder_final,
                 src_mask,
-                trg_mask,
+                trg_mask=None,
                 hidden=None,
                 max_len=None):
         """Unroll the decoder one step at a time."""
 
         # the maximum number of steps to unroll the RNN
+        if trg_mask is None:
+            max_len = 100
         if max_len is None:
             max_len = trg_mask.size(-1)
 
@@ -530,6 +532,7 @@ def greedy_decode(model,
         encoder_hidden, encoder_final = model.encode(src, src_mask,
                                                      src_lengths)
         prev_y = torch.ones(1, 1).fill_(sos_index).type_as(src)
+        print(prev_y.size())
         trg_mask = torch.ones_like(prev_y)
 
     output = []
@@ -537,9 +540,8 @@ def greedy_decode(model,
     hidden = None
     for i in range(max_len):
         with torch.no_grad():
-            out, hidden, pre_output = model.decode(encoder_hidden,
-                                                   encoder_final, src_mask,
-                                                   prev_y, trg_mask, hidden)
+            out, hidden, pre_output = model.decode(
+                encoder_hidden, encoder_final, src_mask, prev_y, None, hidden)
 
             # we predict from the pre-output layer, which is
             # a combination of Decoder state, prev emb, and context

@@ -481,6 +481,14 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
     return dev_perplexities
 
 
+model = make_model(
+    len(vocab),
+    len(vocab),
+    emb_size=500,
+    hidden_size=256,
+    num_layers=3,
+    dropout=0.1)
+
 model = nn.DataParallel(model, device_ids=[0, 1, 2, 3]).cuda()
 
 dev_perplexities = train(model, num_epochs=100)
