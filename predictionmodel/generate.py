@@ -381,7 +381,7 @@ if True:
         init_token=SOS_TOKEN,
         eos_token=EOS_TOKEN)
 
-    MAX_LEN = 50  # NOTE: we filter out a lot of sentences for speed
+    MAX_LEN = 100000  # NOTE: we filter out a lot of sentences for speed
 
     data_fields = [('sentence', SRC), ('article', TRG)]
 
@@ -393,7 +393,7 @@ if True:
         fields=data_fields,
         filter_pred=lambda x: len(vars(x)['sentence']) <= MAX_LEN and len(
             vars(x)['article']) <= 50)
-    MIN_FREQ = 2  # NOTE: we limit the vocabulary to frequent words for speed
+    MIN_FREQ = 1  # NOTE: we limit the vocabulary to frequent words for speed
     VOCAB = vocab.Vectors('model.txt', cache='/mounted/data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
     TRG.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ * 2)
