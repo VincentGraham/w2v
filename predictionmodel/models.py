@@ -246,7 +246,8 @@ def make_model(src_vocab,
                emb_size=500,
                hidden_size=512,
                num_layers=1,
-               dropout=0.1):
+               dropout=0.1,
+               pret=None):
     "Helper: Construct a model from hyperparameters."
 
     attention = BahdanauAttention(hidden_size)

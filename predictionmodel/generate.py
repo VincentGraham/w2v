@@ -489,7 +489,8 @@ model = make_model(
     emb_size=500,
     hidden_size=256,
     num_layers=2,
-    dropout=0.1)
+    dropout=0.1,
+    pret=pret)
 
 model = nn.DataParallel(model, device_ids=[0, 1, 2, 3]).cuda()
 
