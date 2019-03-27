@@ -733,6 +733,21 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         train_perplexity = run_epoch(
             train_iter, model, print_every=print_every, optim=optim)
 
+        model.eval()
+        with torch.no_grad():
+            print_examples((rebatch(PAD_INDEX, x) for x in valid_iter),
+                           model,
+                           n=3,
+                           src_vocab=SRC.vocab,
+                           trg_vocab=TRG.vocab)
+
+            dev_perplexity = run_epoch(
+                (rebatch(PAD_INDEX, b) for b in valid_iter),
+                model,
+            )
+            print("Validation perplexity: %f" % dev_perplexity)
+            dev_perplexities.append(dev_perplexity)
+
     return dev_perplexities
 
 
