@@ -80,7 +80,7 @@ class Batch:
 
 def run_epoch(data_iter, model, print_every=50, optim=None):
     """Standard Training and Logging Function"""
-
+    print_every = 1
     start = time.time()
     total_tokens = 0
     total_loss = 0
@@ -460,10 +460,10 @@ def wrap_data(data):
 
 def rebatch(pad_idx, batch):
     """Wrap torchtext batch into our own Batch class for pre-processing"""
-    return Batch(batch.sentence, batch.article, pad_idx)
+    return Batch(batch.src, batch.trg, pad_idx)
 
 
-def train(model, num_epochs=10, lr=0.0003, print_every=100):
+def train(model, num_epochs=10, lr=0.0003):
 
     # optionally add label smoothing; see the Annotated Transformer
     optim = torch.optim.Adam(model.parameters(), lr=lr)
@@ -477,8 +477,8 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         train_perplexity = run_epoch(
             (rebatch(PAD_INDEX, b) for b in train_iter),
             model,
-            optim,
-            print_every=print_every)
+            print_every=1,
+            optim=optim)
 
     return dev_perplexities
 
@@ -494,7 +494,7 @@ model = make_model(
 
 model = nn.DataParallel(model, device_ids=[0, 1, 2, 3]).cuda()
 
-dev_perplexities = train(model, print_every=100, num_epochs=100)
+dev_perplexities = train(model, num_epochs=100)
 
 torch.save(model.state_dict(), '/mounted/data/torch/parallel_model')
 torch.save(model.module.state_dict(), '/mounted/data/torch/model')
