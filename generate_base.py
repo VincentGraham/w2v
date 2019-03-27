@@ -353,7 +353,6 @@ class Batch:
             self.trg = trg[:, :-1]
             self.trg_lengths = trg_lengths
             self.trg_raw = self.trg.tolist()
-            self.trg_lengths_raw = self.trg_lengths.tolist()
             self.trg_y = trg[:, 1:]
             self.trg_mask = (self.trg_y != pad_index)
             self.ntokens = (self.trg_y != pad_index).data.sum().item()
@@ -396,7 +395,7 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         # m = FacebookAdaptiveSoftmax(
         #     len(vocab), 256, [2000, 10000], dropout=0.1)
         # criterion = FacebookAdaptiveLoss(PAD_INDEX)
-        # criterion = nn.MSELoss(reduction="sum", ignore_index=0)
+        criterion = nn.NLLLoss(reduction="sum", ignore_index=0)
         criterion = nn.MSELoss()
 
         # x = pre_output.view(-1, pre_output.size()[1])
@@ -411,7 +410,8 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
                 words = []
                 for word_idx in list:
                     word = vocab[word_idx]
-                    words.append(pret[word])  # the embedding
+                    words.append(word)  # replace with below for non-nllloss
+                    # words.append(pret[word])  # the embedding
                 out.append(words)
             return torch.Tensor(out)
 
@@ -579,14 +579,25 @@ def print_examples(example_iter,
                    trg_vocab=None):
     """Prints N examples. Assumes batch size of 1."""
 
+    def fix_target(tens):
+        out = []
+        for list in tens:
+            words = []
+            for word_idx in list:
+                word = vocab[word_idx]
+                words.append(word)  # replace with below for non-nllloss
+                # words.append(pret[word])  # the embedding
+            out.append(words)
+        return torch.Tensor(out)
+
     model.eval()
     count = 0
     print()
     with torch.no_grad():
         if src_vocab is not None and trg_vocab is not None:
-            src_eos_index = src_vocab.stoi[EOS_TOKEN]
-            trg_sos_index = trg_vocab.stoi[SOS_TOKEN]
-            trg_eos_index = trg_vocab.stoi[EOS_TOKEN]
+            src_eos_index = vocab.index[EOS_TOKEN]
+            trg_sos_index = vocab.index[SOS_TOKEN]
+            trg_eos_index = vocab.index[EOS_TOKEN]
         else:
             src_eos_index = None
             trg_sos_index = 1
@@ -595,7 +606,7 @@ def print_examples(example_iter,
         if isinstance(example_iter, Batch):
             batch = example_iter
             src = batch.src.cpu().numpy()[0, :]
-            trg = batch.trg_y.cpu().numpy()[0, :]
+            trg = fix_target(batch.trg_raw).cpu().numpy()[0, :]
 
             # remove </s> (if it is there)
             result, _ = greedy_decode(
@@ -608,12 +619,15 @@ def print_examples(example_iter,
                 eos_index=trg_eos_index)
             print("Example #%d" % (i + 1))
             print("Src : ", " ".join(lookup_words_full_vocab(src)))
-            print("Trg : ", " ".join(lookup_words_full_vocab(trg)))
+            print("Trg : ", " ".join(
+                lookup_words_full_vocab_from_embeddings(trg)))
             print("Pred: ", " ".join(
                 lookup_words_full_vocab_from_embeddings(result)))
             print()
 
-            return " ".join(lookup_words(result, vocab=trg_vocab))
+            return " ".join(
+                lookup_words_full_vocab_from_embeddings(
+                    result, vocab=trg_vocab))
         else:
             for i, batch in enumerate(example_iter):
                 src = batch.src.cpu().numpy()[0, :]
@@ -631,14 +645,19 @@ def print_examples(example_iter,
                     eos_index=trg_eos_index)
                 print("Example #%d" % (i + 1))
                 print("Src : ", " ".join(lookup_words_full_vocab(src)))
-                print("Trg : ", " ".join(lookup_words_full_vocab(trg)))
-                print("Pred: ", " ".join(lookup_words_full_vocab(result)))
+                print("Trg : ", " ".join(
+                    lookup_words_full_vocab_from_embeddings(trg)))
+                print(
+                    "Pred: ", " ".join(
+                        lookup_words_full_vocab_from_embeddings(result)))
                 print()
 
                 count += 1
                 if count == n:
                     break
-                return " ".join(lookup_words(result, vocab=trg_vocab))
+                return " ".join(
+                    lookup_words_full_vocab_from_embeddings(
+                        result, vocab=trg_vocab))
 
 
 def plot_perplexity(perplexities):
@@ -731,7 +750,7 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         print("Epoch", epoch)
         model.train()
         train_perplexity = run_epoch(
-            train_iter, model, print_every=print_every, optim=optim)
+            train_iter, model, print_every=1, optim=optim)
 
         model.eval()
         with torch.no_grad():
@@ -765,7 +784,7 @@ def train_model():
     print("saved model")
 
 
-train_model()
+# train_model()
 
 
 def rebatch_pred(pad_idx, batch):
@@ -778,7 +797,7 @@ def load_model():
         len(vocab),
         emb_size=500,
         hidden_size=256,
-        num_layers=1,
+        num_layers=3,
         dropout=0.1)
     model.load_state_dict(torch.load('data/torch/model'))
     model.eval()
@@ -807,7 +826,7 @@ def load_dataparallel_model():
 # x = list(data_gen("korea"))
 
 # if not FAST:
-#     model = load_model()
+model = load_model()
 
 # train_model()
 
@@ -827,61 +846,64 @@ def load_dataparallel_model():
 #             src_vocab=SRC.vocab,
 #             trg_vocab=TRG.vocab)
 
-# from telegram.ext import Updater, InlineQueryHandler, CommandHandler
-# from telegram import constants
-# import requests
-# import re
-# import time
+from telegram.ext import Updater, InlineQueryHandler, CommandHandler
+from telegram import constants
+import requests
+import re
+import time
 
-# def send_message(bot, chat_id, text: str, **kwargs):
-#     if len(text) <= 500:
-#         return bot.send_message(chat_id, text, **kwargs)
 
-#     parts = []
-#     while len(text) > 0:
-#         if len(text) > 500:
-#             part = text[:500]
-#             first_lnbr = part.rfind('\n')
-#             if first_lnbr != -1:
-#                 parts.append(part[:first_lnbr])
-#                 text = text[first_lnbr:]
-#             else:
-#                 parts.append(part)
-#                 text = text[500:]
-#         else:
-#             parts.append(text)
-#             break
+def send_message(bot, chat_id, text: str, **kwargs):
+    if len(text) <= 500:
+        return bot.send_message(chat_id, text, **kwargs)
 
-#     msg = None
-#     for part in parts:
-#         msg = bot.send_message(chat_id, part, **kwargs)
-#         time.sleep(.25)
-#     return msg
+    parts = []
+    while len(text) > 0:
+        if len(text) > 500:
+            part = text[:500]
+            first_lnbr = part.rfind('\n')
+            if first_lnbr != -1:
+                parts.append(part[:first_lnbr])
+                text = text[first_lnbr:]
+            else:
+                parts.append(part)
+                text = text[500:]
+        else:
+            parts.append(text)
+            break
 
-# def explain(bot, i):
-#     id = i.message.chat.id
-#     i = i.message.text[2:].strip()
-#     works = True
-#     if i == "HELP":
-#         send_message(bot, chat_id=id, text=str(SRC.vocab.itos))
-#         works = False
-#     for c in i.split():
-#         if c not in SRC.vocab.itos:
-#             works = False
-#     if works:
-#         send_message(
-#             bot,
-#             chat_id=id,
-#             text=i + ': ' + print_examples(
-#                 list(data_gen(i)),
-#                 model,
-#                 n=3,
-#                 src_vocab=SRC.vocab,
-#                 trg_vocab=TRG.vocab))
+    msg = None
+    for part in parts:
+        msg = bot.send_message(chat_id, part, **kwargs)
+        time.sleep(.25)
+    return msg
 
-# print('loaded all that stuff')
-# updater = Updater('675465827:AAEeL4zI3M5eH-heceYhPpIZqK-rFlup7N4')
-# dp = updater.dispatcher
-# dp.add_handler(CommandHandler('l', explain))
-# updater.start_polling()
-# updater.idle()
+
+def explain(bot, i):
+    id = i.message.chat.id
+    i = i.message.text[2:].strip()
+    works = True
+    if i == "HELP":
+        send_message(bot, chat_id=id, text=str([x[1] for x in vocab[:100]]))
+        works = False
+    for c in i.split():
+        if c not in SRC.vocab.itos:
+            works = False
+    if works:
+        send_message(
+            bot,
+            chat_id=id,
+            text=i + ': ' + print_examples(
+                list(data_gen(i, i)),
+                model,
+                n=3,
+                src_vocab=vocab,
+                trg_vocab=vocab))
+
+
+print('loaded all that stuff')
+updater = Updater('675465827:AAEeL4zI3M5eH-heceYhPpIZqK-rFlup7N4')
+dp = updater.dispatcher
+dp.add_handler(CommandHandler('l', explain))
+updater.start_polling()
+updater.idle()
