@@ -570,7 +570,7 @@ with tf.Session(graph=loaded_graph) as sess:
                 definition_length: [np.random.randint(5, 8)],
                 word_length: [len(word)] * batch_size,
                 keep_prob: 1.0
-            })[0][0]
+            })[0]
         print([int(np.average(i)) for i in answer_logits])
 
         # print(answer_logits)
@@ -593,8 +593,10 @@ with tf.Session(graph=loaded_graph) as sess:
         #     int_to_vocab[abs(int(np.average(i)))] for i in answer_logits
         #     if abs(int(np.average(i))) != pad
         # ])))
-        print('  Response Words: {}'.format(" ".join(
-            [int_to_vocab[int(i)] for i in answer_logits if int(i) != pad])))
+        print('  Response Words: {}'.format(" ".join([
+            int_to_vocab[int(max(i))] for i in answer_logits
+            if int(max(i)) != pad
+        ])))
 
 # sleep per day or pain per day
 

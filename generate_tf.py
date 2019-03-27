@@ -463,69 +463,70 @@ definition_update_loss = [
 ]  # Record the update losses for saving improvements in the model
 
 checkpoint = "best_model.ckpt"
-with tf.Session(graph=train_graph) as sess:
-    sess.run(tf.global_variables_initializer())
 
-    # If we want to continue training a previous session
-    # loader = tf.train.import_meta_graph("./" + checkpoint + '.meta')
-    # loader.restore(sess, checkpoint)
+# with tf.Session(graph=train_graph) as sess:
+#     sess.run(tf.global_variables_initializer())
 
-    for epoch_i in range(1, epochs + 1):
-        update_loss = 0
-        batch_loss = 0
-        for batch_i, (definitions_batch, words_batch, definitions_lengths,
-                      words_lengths) in enumerate(
-                          get_batches(sorted_definitions_short,
-                                      sorted_words_short, batch_size)):
-            start_time = time.time()
-            _, loss = sess.run(
-                [train_op, cost], {
-                    input_data: words_batch,
-                    targets: definitions_batch,
-                    lr: learning_rate,
-                    definition_length: definitions_lengths,
-                    word_length: words_lengths,
-                    keep_prob: keep_probability
-                })
+#     # If we want to continue training a previous session
+#     # loader = tf.train.import_meta_graph("./" + checkpoint + '.meta')
+#     # loader.restore(sess, checkpoint)
 
-            batch_loss += loss
-            update_loss += loss
-            end_time = time.time()
-            batch_time = end_time - start_time
+#     for epoch_i in range(1, epochs + 1):
+#         update_loss = 0
+#         batch_loss = 0
+#         for batch_i, (definitions_batch, words_batch, definitions_lengths,
+#                       words_lengths) in enumerate(
+#                           get_batches(sorted_definitions_short,
+#                                       sorted_words_short, batch_size)):
+#             start_time = time.time()
+#             _, loss = sess.run(
+#                 [train_op, cost], {
+#                     input_data: words_batch,
+#                     targets: definitions_batch,
+#                     lr: learning_rate,
+#                     definition_length: definitions_lengths,
+#                     word_length: words_lengths,
+#                     keep_prob: keep_probability
+#                 })
 
-            if batch_i % display_step == 0 and batch_i > 0:
-                print(
-                    'Epoch {:>3}/{} Batch {:>4}/{} - Loss: {:>6.3f}, Seconds: {:>4.2f}'
-                    .format(epoch_i, epochs, batch_i,
-                            len(sorted_words_short) // batch_size,
-                            batch_loss / display_step,
-                            batch_time * display_step))
-                batch_loss = 0
+#             batch_loss += loss
+#             update_loss += loss
+#             end_time = time.time()
+#             batch_time = end_time - start_time
 
-            if batch_i % update_check == 0 and batch_i > 0:
-                definition_update_loss.append(update_loss)
-                # If the update loss is at a new minimum, save the model
-                if update_loss <= min(definition_update_loss):
-                    print('New Record!')
-                    stop_early = 0
-                    saver = tf.train.Saver()
-                    saver.save(sess, checkpoint)
+#             if batch_i % display_step == 0 and batch_i > 0:
+#                 print(
+#                     'Epoch {:>3}/{} Batch {:>4}/{} - Loss: {:>6.3f}, Seconds: {:>4.2f}'
+#                     .format(epoch_i, epochs, batch_i,
+#                             len(sorted_words_short) // batch_size,
+#                             batch_loss / display_step,
+#                             batch_time * display_step))
+#                 batch_loss = 0
 
-                else:
-                    print("No Improvement.")
-                    stop_early += 1
-                    if stop_early == stop:
-                        break
-                update_loss = 0
+#             if batch_i % update_check == 0 and batch_i > 0:
+#                 definition_update_loss.append(update_loss)
+#                 # If the update loss is at a new minimum, save the model
+#                 if update_loss <= min(definition_update_loss):
+#                     print('New Record!')
+#                     stop_early = 0
+#                     saver = tf.train.Saver()
+#                     saver.save(sess, checkpoint)
 
-        # Reduce learning rate, but not below its minimum value
-        learning_rate *= learning_rate_decay
-        if learning_rate < min_learning_rate:
-            learning_rate = min_learning_rate
+#                 else:
+#                     print("No Improvement.")
+#                     stop_early += 1
+#                     if stop_early == stop:
+#                         break
+#                 update_loss = 0
 
-        if stop_early == stop:
-            print("Stopping Training.")
-            break
+#         # Reduce learning rate, but not below its minimum value
+#         learning_rate *= learning_rate_decay
+#         if learning_rate < min_learning_rate:
+#             learning_rate = min_learning_rate
+
+#         if stop_early == stop:
+#             print("Stopping Training.")
+#             break
 
 
 def word_to_seq(word):
@@ -570,13 +571,12 @@ with tf.Session(graph=loaded_graph) as sess:
                 definition_length: [np.random.randint(5, 8)],
                 word_length: [len(word)] * batch_size,
                 keep_prob: 1.0
-            })[0][0]
-        print([int(np.average(i)) for i in answer_logits])
+            })[0]
 
         # print(answer_logits)
         answer_logits = answer_logits  # a list of lists
         pad = vocab_to_int["<PAD>"]
-
+        print(answer_logits)
         print('Original word:', text_in)
 
         print('\nword')
@@ -593,8 +593,10 @@ with tf.Session(graph=loaded_graph) as sess:
         #     int_to_vocab[abs(int(np.average(i)))] for i in answer_logits
         #     if abs(int(np.average(i))) != pad
         # ])))
-        print('  Response Words: {}'.format(" ".join(
-            [int_to_vocab[int(i)] for i in answer_logits if int(i) != pad])))
+        print('  Response Words: {}'.format(" ".join([
+            int_to_vocab[i.tolist().index(max(i))] for i in answer_logits
+            if i.tolist().index(max(i)) != pad
+        ])))
 
 # sleep per day or pain per day
 

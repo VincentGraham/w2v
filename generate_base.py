@@ -12,12 +12,13 @@ import gc
 import io
 import os
 import psutil
+import random
 from adasoft import AdaptiveLoss, AdaptiveSoftmax, FacebookAdaptiveSoftmax, FacebookAdaptiveLoss
 
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-USE_CUDA = 0
+USE_CUDA = False
 DEVICE = torch.device('cpu')
 
 # or set to 'cpu'
@@ -173,7 +174,7 @@ class Decoder(nn.Module):
 
         self.dropout_layer = nn.Dropout(p=dropout)
         self.pre_output_layer = nn.Linear(
-            hidden_size + 2 * hidden_size + emb_size, hidden_size, bias=False)
+            hidden_size + 2 * hidden_size + emb_size, emb_size, bias=False)
 
     def forward_step(self, prev_embed, encoder_hidden, src_mask, proj_key,
                      hidden):
@@ -335,7 +336,6 @@ class Batch:
     """
 
     def __init__(self, src, trg, pad_index=0):
-
         src, src_lengths = src
         self.src = src
         self.src_lengths = src_lengths
@@ -352,6 +352,8 @@ class Batch:
             trg, trg_lengths = trg
             self.trg = trg[:, :-1]
             self.trg_lengths = trg_lengths
+            self.trg_raw = self.trg.tolist()
+            self.trg_lengths_raw = self.trg_lengths.tolist()
             self.trg_y = trg[:, 1:]
             self.trg_mask = (self.trg_y != pad_index)
             self.ntokens = (self.trg_y != pad_index).data.sum().item()
@@ -387,29 +389,41 @@ def run_epoch(data_iter, model, print_every=50, optim=None):
         out, _, pre_output, = model.forward(
             batch.src, batch.trg, batch.src_mask, batch.trg_mask,
             batch.src_lengths, batch.trg_lengths, batch.trg_y)
+
         # loss = loss_compute(pre_output, batch.trg_y, batch.nseqs)
         # m = AdaptiveSoftmax(256, [2000, 10000])
-        m = FacebookAdaptiveSoftmax(
-            len(vocab), 256, [2000, 10000], dropout=0.1)
-        criterion = FacebookAdaptiveLoss(PAD_INDEX)
+        # m = FacebookAdaptiveSoftmax(
+        #     len(vocab), 256, [2000, 10000], dropout=0.1)
+        # criterion = FacebookAdaptiveLoss(PAD_INDEX)
+        # criterion = nn.MSELoss(reduction="sum", ignore_index=0)
+        criterion = nn.MSELoss()
 
-        x = pre_output.view(-1, pre_output.size()[1])
-        y = batch.trg_y.contiguous().view(
-            batch.trg_y.size()[0] * batch.trg_y.size()[1])
+        # x = pre_output.view(-1, pre_output.size()[1])
+        # y = batch.trg_y.contiguous().view(
+        #     batch.trg_y.size()[0] * batch.trg_y.size()[1])
 
-        print(x.size(), y.size(), batch.trg_y.size())
+        # print(x.size(), y.size(), batch.trg_y.size())
 
-        output, new_target = m(pre_output, y)
-        loss = criterion(m, output, y)
+        def fix_target(tens):
+            out = []
+            for list in tens:
+                words = []
+                for word_idx in list:
+                    word = vocab[word_idx]
+                    words.append(pret[word])  # the embedding
+                out.append(words)
+            return torch.Tensor(out)
+
+        new_trg = fix_target(batch.trg_raw)
+
+        loss = criterion(pre_output, new_trg)
         total_tokens += batch.ntokens
         print_tokens += batch.ntokens
         loss.backward()
         optim.step()
         optim.zero_grad()
-        total_loss += loss.data.item
-        del loss
-        del x
-        del y
+        loss.detach()
+        total_loss += loss.item()
 
         if model.training and i % print_every == 0:
             elapsed = time.time() - start
@@ -436,6 +450,10 @@ def lookup_words_full_vocab(x):
     return x
 
 
+def lookup_words_full_vocab_from_embeddings(x):
+    return [pret.similar_by_vector(i)[0][0] for i in x]
+
+
 def reverse_lookup_words_full_vocab(x, length, token):
 
     z = [0]
@@ -445,6 +463,11 @@ def reverse_lookup_words_full_vocab(x, length, token):
         z += ([token])
     z += [EOS_INDEX]
     return np.asarray([z])
+
+
+# def reverse_lookup_words_full_vocab_with_pre_embedding(x, length, token):
+#     # passed a Tensor.tolist() -> [[]]
+#     z =  # [[]]
 
 
 def data_gen(sentence, article, num_words=11, num_batches=1, length=MAX_LEN):
@@ -612,7 +635,8 @@ def print_examples(example_iter,
             print("Example #%d" % (i + 1))
             print("Src : ", " ".join(lookup_words_full_vocab(src)))
             print("Trg : ", " ".join(lookup_words_full_vocab(trg)))
-            print("Pred: ", " ".join(lookup_words_full_vocab(result)))
+            print("Pred: ", " ".join(
+                lookup_words_full_vocab_from_embeddings(result)))
             print()
 
             return " ".join(lookup_words(result, vocab=trg_vocab))
@@ -659,8 +683,8 @@ if True:
 
     def token(text):
         return [
-            x for x in tokenize(text)[0].replace('(', "").replace(")", "").
-            split()
+            x for x in tokenize(text)[0].replace('(', "").replace(")",
+                                                                  "").split()
         ]
 
     # we include lengths to provide to the RNNs
@@ -734,20 +758,6 @@ def train(model, num_epochs=10, lr=0.0003, print_every=100):
         model.train()
         train_perplexity = run_epoch(
             train_iter, model, print_every=print_every, optim=optim)
-
-        # model.eval()
-        # with torch.no_grad():
-        #     print_examples((rebatch(PAD_INDEX, x) for x in valid_iter),
-        #                    model,
-        #                    n=3,
-        #                    src_vocab=SRC.vocab,
-        #                    trg_vocab=TRG.vocab)
-
-        #     dev_perplexity = run_epoch(
-        #         (rebatch(PAD_INDEX, b) for b in valid_iter), model,
-        #         SimpleLossCompute(model.generator, criterion, None))
-        #     print("Validation perplexity: %f" % dev_perplexity)
-        #     dev_perplexities.append(dev_perplexity)
 
     return dev_perplexities
 

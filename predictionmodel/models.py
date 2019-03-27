@@ -253,6 +253,9 @@ def make_model(src_vocab,
 
     embedding1 = nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors))
     embedding2 = nn.Embedding.from_pretrained(torch.FloatTensor(pret.vectors))
+
+    #TODO change the embedding to a linear layer that takes model[word] vectors.
+    # pa
     embedding1.weight.requires_grad = False
     embedding2.weight.requires_grad = False
 

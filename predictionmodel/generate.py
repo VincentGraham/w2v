@@ -17,6 +17,23 @@ DEVICE1 = torch.device('cuda:1')
 DEVICE2 = torch.device('cuda:2')
 DEVICE3 = torch.device('cuda:0')
 
+FAST = False
+ACCUMULATION = 32
+LOWER = False  # CASE SENSITIVE
+
+vocab = load_word2vec_vocab()
+pret = load_word2vec_model()
+logging.info("Loaded gensim models")
+UNK_TOKEN = "<u>"
+PAD_TOKEN = "<p>"
+SOS_TOKEN = "<s>"
+EOS_TOKEN = "</s>"
+
+PAD_INDEX = vocab.index(PAD_TOKEN)
+SOS_INDEX = vocab.index(SOS_TOKEN)
+EOS_INDEX = vocab.index(EOS_TOKEN)
+MAX_LEN = 10
+
 
 class Batch:
     """Object for holding a batch of data with mask during training.
@@ -257,8 +274,8 @@ if True:
 
     def token(text):
         return [
-            x for x in tokenize(text)[0].replace('(', "").replace(")", "").
-            split()
+            x for x in tokenize(text)[0].replace('(', "").replace(")",
+                                                                  "").split()
         ]
 
     UNK_TOKEN = "<u>"
@@ -296,9 +313,8 @@ if True:
         validation='test.csv',
         format="csv",
         fields=data_fields,
-        filter_pred=
-        lambda x: len(vars(x)['sentence']) <= MAX_LEN and len(vars(x)['article']) <= 50
-    )
+        filter_pred=lambda x: len(vars(x)['sentence']) <= MAX_LEN and len(
+            vars(x)['article']) <= 50)
     MIN_FREQ = 2  # NOTE: we limit the vocabulary to frequent words for speed
     VOCAB = vocab.Vectors('model.txt', cache='/mounted/data')
     SRC.build_vocab(train_data, vectors=VOCAB, min_freq=MIN_FREQ)
@@ -365,7 +381,6 @@ def rebatch(pad_idx, batch):
 
 
 def train(model, num_epochs=10, lr=0.0003, print_every=100):
-    """Train a model on IWSLT"""
 
     # optionally add label smoothing; see the Annotated Transformer
     optim = torch.optim.Adam(model.parameters(), lr=lr)
@@ -396,20 +411,7 @@ model = make_model(
     num_layers=2,
     dropout=0.1)
 
-
-class FullModel(nn.Module):
-    def __init__(self, model):
-        super(FullModel, self).__init__()
-        self.model = model
-        self.loss = nn.NLLLoss(reduction="sum", ignore_index=PAD_INDEX)
-
-    def forward(self, inputs, targets):
-        outputs = self.model(inputs)
-        loss = self.loss(outputs, targets)
-        return torch.unsqueeze(loss, 0), outputs
-
-
-model = nn.DataParallel(FullModel(model), device_ids=[0, 1, 2, 3]).cuda()
+model = nn.DataParallel(model, device_ids=[0, 1, 2, 3]).cuda()
 
 dev_perplexities = train(model, print_every=100, num_epochs=100)
 
